@@ -50,8 +50,11 @@ npm run dev          # Vite 개발 서버 (API는 8080으로 프록시)
 SP_CONFIG=$PWD/backend/config.test.php php -d upload_max_filesize=12M -d post_max_size=14M -S 127.0.0.1:8081 scripts/dev-router.php &
 php backend/tests/api_test.php
 
-# 브라우저 통합 테스트 (8080 서버 + 빌드 필요, Playwright 필요)
+# 브라우저 통합 테스트 (8080 서버 + 빌드 필요, Playwright 필요). 다른 주소는 SP_BASE=http://호스트/sp
 node scripts/e2e.cjs
+
+# Cafe24 업로드 묶음 (dist/). 올리는 방법은 docs/DEPLOY.md
+scripts/package.sh
 ```
 
 ## 작업 방식

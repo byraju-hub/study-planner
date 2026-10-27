@@ -7,7 +7,7 @@ const path = require('path');
 const os = require('os');
 const OUT = path.join(os.tmpdir(), 'sp-e2e');
 fs.mkdirSync(OUT, { recursive: true });
-const BASE = 'http://127.0.0.1:8080/sp';
+const BASE = process.env.SP_BASE || 'http://127.0.0.1:8080/sp';
 const run = Math.random().toString(36).slice(2, 8);
 const loginId = `e2e${run}`;
 let failures = 0;

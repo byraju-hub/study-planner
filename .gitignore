@@ -8,3 +8,4 @@ frontend/build/
 frontend/.svelte-kit/
 .env
 *.log
+dist/
