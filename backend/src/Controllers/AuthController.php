@@ -45,7 +45,7 @@ final class AuthController
 
         try {
             $uid = Db::insert(
-                'INSERT INTO users (login_id, email, password_hash, name, school_name, grade) VALUES (?, ?, ?, ?, ?, ?)',
+                'INSERT INTO sp_users (login_id, email, password_hash, name, school_name, grade) VALUES (?, ?, ?, ?, ?, ?)',
                 [$loginId, $email, self::hash($password), $name, $school, $grade]
             );
         } catch (\PDOException $e) {
@@ -72,14 +72,14 @@ final class AuthController
         $ip = $req->ip();
         self::assertNotLocked($loginId, $ip);
 
-        $user = Db::one('SELECT id, password_hash FROM users WHERE login_id = ?', [$loginId]);
+        $user = Db::one('SELECT id, password_hash FROM sp_users WHERE login_id = ?', [$loginId]);
         // 없는 아이디도 같은 시간이 걸리도록 더미 해시를 검증한다.
         $hash = $user['password_hash'] ?? self::hash('dummy-password-1');
         $ok = password_verify($password, $hash) && $user !== null;
 
-        Db::run('INSERT INTO login_attempts (login_id, ip, success) VALUES (?, ?, ?)', [$loginId, $ip, $ok ? 1 : 0]);
+        Db::run('INSERT INTO sp_login_attempts (login_id, ip, success) VALUES (?, ?, ?)', [$loginId, $ip, $ok ? 1 : 0]);
         if (random_int(1, 50) === 1) {
-            Db::run('DELETE FROM login_attempts WHERE created_at < (NOW() - INTERVAL 1 DAY)');
+            Db::run('DELETE FROM sp_login_attempts WHERE created_at < (NOW() - INTERVAL 1 DAY)');
         }
         if (!$ok) {
             throw new HttpException(401, 'bad_credentials', '아이디 또는 비밀번호가 올바르지 않습니다.');
@@ -87,9 +87,9 @@ final class AuthController
 
         $uid = (int) $user['id'];
         if (password_needs_rehash($user['password_hash'], self::algo())) {
-            Db::run('UPDATE users SET password_hash = ? WHERE id = ?', [self::hash($password), $uid]);
+            Db::run('UPDATE sp_users SET password_hash = ? WHERE id = ?', [self::hash($password), $uid]);
         }
-        Db::run('UPDATE users SET last_login_at = NOW() WHERE id = ?', [$uid]);
+        Db::run('UPDATE sp_users SET last_login_at = NOW() WHERE id = ?', [$uid]);
         Session::login($uid);
         return ['user' => self::publicUser($uid), 'csrf' => Session::csrf()];
     }
@@ -106,11 +106,11 @@ final class AuthController
         $current = (string) ($req->body['current_password'] ?? '');
         $new = self::password($req->body, 'new_password', '새 비밀번호');
 
-        $row = Db::one('SELECT password_hash FROM users WHERE id = ?', [$uid]);
+        $row = Db::one('SELECT password_hash FROM sp_users WHERE id = ?', [$uid]);
         if ($row === null || !password_verify($current, $row['password_hash'])) {
             throw new HttpException(422, 'validation', '현재 비밀번호가 올바르지 않습니다.', 'current_password');
         }
-        Db::run('UPDATE users SET password_hash = ? WHERE id = ?', [self::hash($new), $uid]);
+        Db::run('UPDATE sp_users SET password_hash = ? WHERE id = ?', [self::hash($new), $uid]);
         return ['changed' => true];
     }
 
@@ -123,7 +123,7 @@ final class AuthController
         $grade = Input::int($b, 'grade', 1, 3, '학년', false);
         $class = Input::int($b, 'class_no', 1, 30, '반', false);
         Db::run(
-            'UPDATE users SET name = ?, school_name = ?, grade = ?, class_no = ? WHERE id = ?',
+            'UPDATE sp_users SET name = ?, school_name = ?, grade = ?, class_no = ? WHERE id = ?',
             [$name, $school, $grade, $class, $uid]
         );
         return ['user' => self::publicUser($uid)];
@@ -144,12 +144,12 @@ final class AuthController
     private static function assertNotLocked(string $loginId, string $ip): void
     {
         $byLogin = (int) Db::one(
-            'SELECT COUNT(*) AS n FROM login_attempts
+            'SELECT COUNT(*) AS n FROM sp_login_attempts
               WHERE login_id = ? AND success = 0 AND created_at > (NOW() - INTERVAL 10 MINUTE)',
             [$loginId]
         )['n'];
         $byIp = (int) Db::one(
-            'SELECT COUNT(*) AS n FROM login_attempts
+            'SELECT COUNT(*) AS n FROM sp_login_attempts
               WHERE ip = ? AND success = 0 AND created_at > (NOW() - INTERVAL 10 MINUTE)',
             [$ip]
         )['n'];
@@ -172,7 +172,7 @@ final class AuthController
     private static function publicUser(int $uid): array
     {
         $u = Db::one(
-            'SELECT id, login_id, email, name, school_name, school_code, office_code, grade, class_no FROM users WHERE id = ?',
+            'SELECT id, login_id, email, name, school_name, school_code, office_code, grade, class_no FROM sp_users WHERE id = ?',
             [$uid]
         );
         if ($u === null) {

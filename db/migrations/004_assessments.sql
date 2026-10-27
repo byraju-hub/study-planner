@@ -1,4 +1,4 @@
-CREATE TABLE assessments (
+CREATE TABLE sp_assessments (
   id INT UNSIGNED NOT NULL AUTO_INCREMENT,
   user_id INT UNSIGNED NOT NULL,
   subject_id INT UNSIGNED NOT NULL,
@@ -13,11 +13,11 @@ CREATE TABLE assessments (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_assessments_user_due (user_id, due_date),
-  CONSTRAINT fk_assessments_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-  CONSTRAINT fk_assessments_subject FOREIGN KEY (subject_id) REFERENCES subjects (id) ON DELETE CASCADE
+  CONSTRAINT fk_assessments_user FOREIGN KEY (user_id) REFERENCES sp_users (id) ON DELETE CASCADE,
+  CONSTRAINT fk_assessments_subject FOREIGN KEY (subject_id) REFERENCES sp_subjects (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE assessment_steps (
+CREATE TABLE sp_assessment_steps (
   id INT UNSIGNED NOT NULL AUTO_INCREMENT,
   user_id INT UNSIGNED NOT NULL,
   assessment_id INT UNSIGNED NOT NULL,
@@ -27,6 +27,6 @@ CREATE TABLE assessment_steps (
   sort_order INT NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   KEY idx_steps_assessment (assessment_id, sort_order),
-  CONSTRAINT fk_steps_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-  CONSTRAINT fk_steps_assessment FOREIGN KEY (assessment_id) REFERENCES assessments (id) ON DELETE CASCADE
+  CONSTRAINT fk_steps_user FOREIGN KEY (user_id) REFERENCES sp_users (id) ON DELETE CASCADE,
+  CONSTRAINT fk_steps_assessment FOREIGN KEY (assessment_id) REFERENCES sp_assessments (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

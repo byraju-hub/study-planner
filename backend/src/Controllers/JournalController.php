@@ -27,7 +27,7 @@ final class JournalController
         $rating = Input::int($b, 'self_rating', 1, 5, '자기 평가', false);
 
         Db::run(
-            'INSERT INTO daily_journals (user_id, journal_date, good, bad, self_rating) VALUES (?, ?, ?, ?, ?)
+            'INSERT INTO sp_daily_journals (user_id, journal_date, good, bad, self_rating) VALUES (?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE good = VALUES(good), bad = VALUES(bad), self_rating = VALUES(self_rating)',
             [$uid, $date, $good, $bad, $rating]
         );
@@ -38,7 +38,7 @@ final class JournalController
     public static function find(int $uid, string $date): ?array
     {
         return Db::one(
-            'SELECT journal_date AS date, good, bad, self_rating FROM daily_journals WHERE user_id = ? AND journal_date = ?',
+            'SELECT journal_date AS date, good, bad, self_rating FROM sp_daily_journals WHERE user_id = ? AND journal_date = ?',
             [$uid, $date]
         );
     }

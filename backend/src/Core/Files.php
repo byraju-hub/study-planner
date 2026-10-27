@@ -39,9 +39,9 @@ final class Files
     public static function pathsUnderUnit(int $unitId, int $userId): array
     {
         return self::column(
-            'SELECT m.file_path FROM materials m
+            'SELECT m.file_path FROM sp_materials m
               WHERE m.user_id = ? AND m.file_path IS NOT NULL
-                AND (m.unit_id = ? OR m.unit_id IN (SELECT id FROM units WHERE parent_id = ?))',
+                AND (m.unit_id = ? OR m.unit_id IN (SELECT id FROM sp_units WHERE parent_id = ?))',
             [$userId, $unitId, $unitId]
         );
     }
@@ -50,7 +50,7 @@ final class Files
     public static function pathsUnderTextbook(int $textbookId, int $userId): array
     {
         return self::column(
-            'SELECT m.file_path FROM materials m JOIN units u ON u.id = m.unit_id
+            'SELECT m.file_path FROM sp_materials m JOIN sp_units u ON u.id = m.unit_id
               WHERE m.user_id = ? AND m.file_path IS NOT NULL AND u.textbook_id = ?',
             [$userId, $textbookId]
         );
@@ -60,9 +60,9 @@ final class Files
     public static function pathsUnderSubject(int $subjectId, int $userId): array
     {
         return self::column(
-            'SELECT m.file_path FROM materials m
-               JOIN units u ON u.id = m.unit_id
-               JOIN textbooks t ON t.id = u.textbook_id
+            'SELECT m.file_path FROM sp_materials m
+               JOIN sp_units u ON u.id = m.unit_id
+               JOIN sp_textbooks t ON t.id = u.textbook_id
               WHERE m.user_id = ? AND m.file_path IS NOT NULL AND t.subject_id = ?',
             [$userId, $subjectId]
         );

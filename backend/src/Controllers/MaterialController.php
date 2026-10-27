@@ -28,9 +28,9 @@ final class MaterialController
     {
         $uid = Session::requireUser();
         $unitId = (int) Input::int($req->query, 'unit_id', 1, PHP_INT_MAX, '단원');
-        Owned::find('units', $unitId, $uid);
+        Owned::find('sp_units', $unitId, $uid);
         return Db::all(
-            'SELECT ' . self::COLUMNS . ' FROM materials WHERE user_id = ? AND unit_id = ? ORDER BY id DESC',
+            'SELECT ' . self::COLUMNS . ' FROM sp_materials WHERE user_id = ? AND unit_id = ? ORDER BY id DESC',
             [$uid, $unitId]
         );
     }
@@ -40,7 +40,7 @@ final class MaterialController
         $uid = Session::requireUser();
         $b = $req->body;
         $unitId = (int) Input::int($b, 'unit_id', 1, PHP_INT_MAX, '단원');
-        Owned::find('units', $unitId, $uid);
+        Owned::find('sp_units', $unitId, $uid);
         $type = Input::enum($b, 'type', ['note', 'link'], '자료 종류');
         $title = (string) Input::str($b, 'title', 1, 120, '제목');
 
@@ -56,7 +56,7 @@ final class MaterialController
         }
 
         $id = Db::insert(
-            'INSERT INTO materials (user_id, unit_id, type, title, content, url) VALUES (?, ?, ?, ?, ?, ?)',
+            'INSERT INTO sp_materials (user_id, unit_id, type, title, content, url) VALUES (?, ?, ?, ?, ?, ?)',
             [$uid, $unitId, $type, $title, $content, $url]
         );
         return self::fetch($id, $uid);
@@ -71,7 +71,7 @@ final class MaterialController
             throw new HttpException(413, 'too_large', '파일이 너무 커요. 10MB 이하만 올릴 수 있어요.', 'file');
         }
         $unitId = (int) Input::int($b, 'unit_id', 1, PHP_INT_MAX, '단원');
-        Owned::find('units', $unitId, $uid);
+        Owned::find('sp_units', $unitId, $uid);
 
         $f = $req->files['file'] ?? null;
         if (!is_array($f) || ($f['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
@@ -110,7 +110,7 @@ final class MaterialController
 
         try {
             $id = Db::insert(
-                'INSERT INTO materials (user_id, unit_id, type, title, file_path, file_name, file_size, mime)
+                'INSERT INTO sp_materials (user_id, unit_id, type, title, file_path, file_name, file_size, mime)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                 [$uid, $unitId, 'file', $title, $rel, $original, (int) $f['size'], $mime]
             );
@@ -124,7 +124,7 @@ final class MaterialController
     public static function file(Request $req, array $p): string
     {
         $uid = Session::requireUser();
-        $row = Owned::find('materials', $p['id'], $uid);
+        $row = Owned::find('sp_materials', $p['id'], $uid);
         if ($row['type'] !== 'file' || $row['file_path'] === null) {
             throw new HttpException(404, 'not_found', '파일이 없는 자료입니다.');
         }
@@ -144,7 +144,7 @@ final class MaterialController
     public static function update(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        $row = Owned::find('materials', $p['id'], $uid);
+        $row = Owned::find('sp_materials', $p['id'], $uid);
         $b = $req->body;
         $title = Input::str($b, 'title', 1, 120, '제목', false) ?? $row['title'];
         $content = $row['content'];
@@ -159,7 +159,7 @@ final class MaterialController
             $url = self::url($b);
         }
         Db::run(
-            'UPDATE materials SET title = ?, content = ?, url = ? WHERE id = ? AND user_id = ?',
+            'UPDATE sp_materials SET title = ?, content = ?, url = ? WHERE id = ? AND user_id = ?',
             [$title, $content, $url, $row['id'], $uid]
         );
         return self::fetch((int) $row['id'], $uid);
@@ -168,8 +168,8 @@ final class MaterialController
     public static function delete(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        $row = Owned::find('materials', $p['id'], $uid);
-        Db::run('DELETE FROM materials WHERE id = ? AND user_id = ?', [$row['id'], $uid]);
+        $row = Owned::find('sp_materials', $p['id'], $uid);
+        Db::run('DELETE FROM sp_materials WHERE id = ? AND user_id = ?', [$row['id'], $uid]);
         if ($row['file_path'] !== null) {
             Files::remove([(string) $row['file_path']]);
         }
@@ -196,6 +196,6 @@ final class MaterialController
     /** @return array<string,mixed> */
     private static function fetch(int $id, int $uid): array
     {
-        return Db::one('SELECT ' . self::COLUMNS . ' FROM materials WHERE id = ? AND user_id = ?', [$id, $uid]) ?? [];
+        return Db::one('SELECT ' . self::COLUMNS . ' FROM sp_materials WHERE id = ? AND user_id = ?', [$id, $uid]) ?? [];
     }
 }

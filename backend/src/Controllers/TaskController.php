@@ -17,7 +17,7 @@ final class TaskController
 
     private const SELECT = 'SELECT t.id, t.subject_id, s.name AS subject_name, s.color AS subject_color,
                                    t.source, t.ref_id, t.title, t.task_date, t.est_minutes, t.done_at
-                              FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id';
+                              FROM sp_tasks t LEFT JOIN sp_subjects s ON s.id = t.subject_id';
 
     public static function list(Request $req): array
     {
@@ -38,10 +38,10 @@ final class TaskController
         $date = Input::date($b, 'task_date', '날짜', date('Y-m-d'));
         $subjectId = Input::ownedSubject($b, 'subject_id', $uid);
         $minutes = Input::int($b, 'est_minutes', 1, 600, '예상 시간', false);
-        $order = (int) Db::one('SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM tasks WHERE user_id = ? AND task_date = ?', [$uid, $date])['n'];
+        $order = (int) Db::one('SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM sp_tasks WHERE user_id = ? AND task_date = ?', [$uid, $date])['n'];
 
         $id = Db::insert(
-            'INSERT INTO tasks (user_id, subject_id, source, title, task_date, est_minutes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO sp_tasks (user_id, subject_id, source, title, task_date, est_minutes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)',
             [$uid, $subjectId, 'study', $title, $date, $minutes, $order]
         );
         return self::one($uid, $id);
@@ -50,7 +50,7 @@ final class TaskController
     public static function update(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        $row = Owned::find('tasks', $p['id'], $uid);
+        $row = Owned::find('sp_tasks', $p['id'], $uid);
         $b = $req->body;
         $title = Input::str($b, 'title', 1, 120, '할 일', false) ?? $row['title'];
         $date = Input::date($b, 'task_date', '날짜', $row['task_date']);
@@ -58,7 +58,7 @@ final class TaskController
         $minutes = array_key_exists('est_minutes', $b) ? Input::int($b, 'est_minutes', 1, 600, '예상 시간', false) : $row['est_minutes'];
 
         Db::run(
-            'UPDATE tasks SET title = ?, task_date = ?, subject_id = ?, est_minutes = ? WHERE id = ? AND user_id = ?',
+            'UPDATE sp_tasks SET title = ?, task_date = ?, subject_id = ?, est_minutes = ? WHERE id = ? AND user_id = ?',
             [$title, $date, $subjectId, $minutes, $row['id'], $uid]
         );
         if ($row['source'] === 'assessment' && $date !== $row['task_date']) {
@@ -71,9 +71,9 @@ final class TaskController
     public static function toggle(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        $row = Owned::find('tasks', $p['id'], $uid);
+        $row = Owned::find('sp_tasks', $p['id'], $uid);
         $done = array_key_exists('done', $req->body) ? (bool) $req->body['done'] : $row['done_at'] === null;
-        Db::run('UPDATE tasks SET done_at = ' . ($done ? 'NOW()' : 'NULL') . ' WHERE id = ? AND user_id = ?', [$row['id'], $uid]);
+        Db::run('UPDATE sp_tasks SET done_at = ' . ($done ? 'NOW()' : 'NULL') . ' WHERE id = ? AND user_id = ?', [$row['id'], $uid]);
         if ($row['source'] === 'assessment') {
             AssessmentController::onTaskToggled($uid, $row, $done);
         }
@@ -83,11 +83,11 @@ final class TaskController
     public static function delete(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        $row = Owned::find('tasks', $p['id'], $uid);
+        $row = Owned::find('sp_tasks', $p['id'], $uid);
         if ($row['source'] === 'assessment') {
             AssessmentController::onTaskDeleted($uid, $row);
         }
-        Db::run('DELETE FROM tasks WHERE id = ? AND user_id = ?', [$p['id'], $uid]);
+        Db::run('DELETE FROM sp_tasks WHERE id = ? AND user_id = ?', [$p['id'], $uid]);
         return ['deleted' => true];
     }
 

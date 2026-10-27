@@ -18,7 +18,7 @@ final class TimetableController
         $uid = Session::requireUser();
         $slots = Db::all(
             'SELECT t.weekday, t.period, t.subject_id, s.name AS subject_name, s.color AS subject_color
-               FROM timetable_slots t JOIN subjects s ON s.id = t.subject_id
+               FROM sp_timetable_slots t JOIN sp_subjects s ON s.id = t.subject_id
               WHERE t.user_id = ? ORDER BY t.weekday, t.period',
             [$uid]
         );
@@ -54,9 +54,9 @@ final class TimetableController
         }
 
         Db::transaction(static function () use ($uid, $rows): void {
-            Db::run('DELETE FROM timetable_slots WHERE user_id = ?', [$uid]);
+            Db::run('DELETE FROM sp_timetable_slots WHERE user_id = ?', [$uid]);
             foreach ($rows as $r) {
-                Db::run('INSERT INTO timetable_slots (user_id, weekday, period, subject_id) VALUES (?, ?, ?, ?)', $r);
+                Db::run('INSERT INTO sp_timetable_slots (user_id, weekday, period, subject_id) VALUES (?, ?, ?, ?)', $r);
             }
         });
         return self::get($req);

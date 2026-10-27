@@ -18,7 +18,7 @@ final class StudyController
         $date = Input::date($req->query, 'date', '날짜', date('Y-m-d'));
 
         $minutes = Db::one(
-            'SELECT COALESCE(SUM(minutes), 0) AS m FROM study_sessions
+            'SELECT COALESCE(SUM(minutes), 0) AS m FROM sp_study_sessions
               WHERE user_id = ? AND ended_at IS NOT NULL AND DATE(started_at) = ?',
             [$uid, $date]
         )['m'];
@@ -48,7 +48,7 @@ final class StudyController
 
         $weekday = (int) date('N', strtotime($date));
         $slot = Db::one(
-            'SELECT t.subject_id, s.name FROM timetable_slots t JOIN subjects s ON s.id = t.subject_id
+            'SELECT t.subject_id, s.name FROM sp_timetable_slots t JOIN sp_subjects s ON s.id = t.subject_id
               WHERE t.user_id = ? AND t.weekday = ? AND t.period = ?',
             [$uid, $weekday, $period]
         );
@@ -58,27 +58,27 @@ final class StudyController
 
         Db::transaction(static function () use ($uid, $date, $period, $topic, $done, $slot): void {
             Db::run(
-                'INSERT INTO lesson_reviews (user_id, lesson_date, period, subject_id, topic) VALUES (?, ?, ?, ?, ?)
+                'INSERT INTO sp_lesson_reviews (user_id, lesson_date, period, subject_id, topic) VALUES (?, ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE subject_id = VALUES(subject_id), topic = VALUES(topic)',
                 [$uid, $date, $period, $slot['subject_id'], $topic]
             );
             $lesson = Db::one(
-                'SELECT id, done_at, review_item_id FROM lesson_reviews WHERE user_id = ? AND lesson_date = ? AND period = ?',
+                'SELECT id, done_at, review_item_id FROM sp_lesson_reviews WHERE user_id = ? AND lesson_date = ? AND period = ?',
                 [$uid, $date, $period]
             );
 
             if ($done && $lesson['done_at'] === null) {
                 $title = $topic ?? "{$slot['name']} {$period}교시";
                 $reviewId = ReviewController::add($uid, $title, (int) $slot['subject_id'], null, $date);
-                Db::run('UPDATE lesson_reviews SET done_at = NOW(), review_item_id = ? WHERE id = ?', [$reviewId, $lesson['id']]);
+                Db::run('UPDATE sp_lesson_reviews SET done_at = NOW(), review_item_id = ? WHERE id = ?', [$reviewId, $lesson['id']]);
             } elseif (!$done && $lesson['done_at'] !== null) {
                 // 아직 한 번도 복습하지 않은 항목만 함께 지운다.
                 if ($lesson['review_item_id'] !== null) {
-                    Db::run('DELETE FROM review_items WHERE id = ? AND user_id = ? AND last_reviewed_at IS NULL', [$lesson['review_item_id'], $uid]);
+                    Db::run('DELETE FROM sp_review_items WHERE id = ? AND user_id = ? AND last_reviewed_at IS NULL', [$lesson['review_item_id'], $uid]);
                 }
-                Db::run('UPDATE lesson_reviews SET done_at = NULL, review_item_id = NULL WHERE id = ?', [$lesson['id']]);
+                Db::run('UPDATE sp_lesson_reviews SET done_at = NULL, review_item_id = NULL WHERE id = ?', [$lesson['id']]);
             } elseif ($done && $topic !== null && $lesson['review_item_id'] !== null) {
-                Db::run('UPDATE review_items SET title = ? WHERE id = ? AND user_id = ?', [$topic, $lesson['review_item_id'], $uid]);
+                Db::run('UPDATE sp_review_items SET title = ? WHERE id = ? AND user_id = ?', [$topic, $lesson['review_item_id'], $uid]);
             }
         });
 
@@ -100,9 +100,9 @@ final class StudyController
         $rows = Db::all(
             'SELECT t.period, t.subject_id, s.name AS subject_name, s.color AS subject_color,
                     l.topic, l.done_at, l.review_item_id
-               FROM timetable_slots t
-               JOIN subjects s ON s.id = t.subject_id
-               LEFT JOIN lesson_reviews l ON l.user_id = t.user_id AND l.lesson_date = ? AND l.period = t.period
+               FROM sp_timetable_slots t
+               JOIN sp_subjects s ON s.id = t.subject_id
+               LEFT JOIN sp_lesson_reviews l ON l.user_id = t.user_id AND l.lesson_date = ? AND l.period = t.period
               WHERE t.user_id = ? AND t.weekday = ?
               ORDER BY t.period',
             [$date, $uid, $weekday]

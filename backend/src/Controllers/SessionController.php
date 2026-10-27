@@ -29,19 +29,19 @@ final class SessionController
         if (self::activeFor($uid) !== null) {
             throw new HttpException(409, 'already_running', '이미 공부 중이에요. 먼저 정지해 주세요.');
         }
-        $id = Db::insert('INSERT INTO study_sessions (user_id, subject_id, started_at) VALUES (?, ?, NOW())', [$uid, $subjectId]);
+        $id = Db::insert('INSERT INTO sp_study_sessions (user_id, subject_id, started_at) VALUES (?, ?, NOW())', [$uid, $subjectId]);
         return ['session' => self::fetch($uid, $id), 'server_now' => date('c')];
     }
 
     public static function stop(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        $row = Owned::find('study_sessions', $p['id'], $uid);
+        $row = Owned::find('sp_study_sessions', $p['id'], $uid);
         if ($row['ended_at'] !== null) {
             throw new HttpException(409, 'already_stopped', '이미 정지한 기록이에요.');
         }
         Db::run(
-            'UPDATE study_sessions SET ended_at = NOW(), minutes = LEAST(TIMESTAMPDIFF(MINUTE, started_at, NOW()), ?)
+            'UPDATE sp_study_sessions SET ended_at = NOW(), minutes = LEAST(TIMESTAMPDIFF(MINUTE, started_at, NOW()), ?)
               WHERE id = ? AND user_id = ?',
             [self::MAX_MINUTES, $row['id'], $uid]
         );
@@ -57,7 +57,7 @@ final class SessionController
 
         $byDay = [];
         foreach (Db::all(
-            'SELECT DATE(started_at) AS d, SUM(minutes) AS m FROM study_sessions
+            'SELECT DATE(started_at) AS d, SUM(minutes) AS m FROM sp_study_sessions
               WHERE user_id = ? AND ended_at IS NOT NULL AND DATE(started_at) BETWEEN ? AND ? GROUP BY d',
             [$uid, $from, $today]
         ) as $r) {
@@ -74,7 +74,7 @@ final class SessionController
 
         $subjects = Db::all(
             'SELECT s.id AS subject_id, COALESCE(s.name, \'과목 없음\') AS name, COALESCE(s.color, \'#5B6475\') AS color, SUM(w.minutes) AS minutes
-               FROM study_sessions w LEFT JOIN subjects s ON s.id = w.subject_id
+               FROM sp_study_sessions w LEFT JOIN sp_subjects s ON s.id = w.subject_id
               WHERE w.user_id = ? AND w.ended_at IS NOT NULL AND DATE(w.started_at) BETWEEN ? AND ?
               GROUP BY s.id, s.name, s.color ORDER BY minutes DESC',
             [$uid, $from, $today]
@@ -88,7 +88,7 @@ final class SessionController
     /** @return array<string,mixed>|null */
     public static function activeFor(int $uid): ?array
     {
-        $r = Db::one('SELECT id FROM study_sessions WHERE user_id = ? AND ended_at IS NULL ORDER BY id DESC LIMIT 1', [$uid]);
+        $r = Db::one('SELECT id FROM sp_study_sessions WHERE user_id = ? AND ended_at IS NULL ORDER BY id DESC LIMIT 1', [$uid]);
         return $r === null ? null : self::fetch($uid, (int) $r['id']);
     }
 
@@ -97,7 +97,7 @@ final class SessionController
     {
         $r = Db::one(
             'SELECT w.id, w.subject_id, s.name AS subject_name, s.color AS subject_color, w.started_at, w.ended_at, w.minutes
-               FROM study_sessions w LEFT JOIN subjects s ON s.id = w.subject_id
+               FROM sp_study_sessions w LEFT JOIN sp_subjects s ON s.id = w.subject_id
               WHERE w.id = ? AND w.user_id = ?',
             [$id, $uid]
         ) ?? [];

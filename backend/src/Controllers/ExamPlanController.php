@@ -19,7 +19,7 @@ final class ExamPlanController
     public static function preview(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        Owned::find('exams', $p['id'], $uid);
+        Owned::find('sp_exams', $p['id'], $uid);
         $today = date('Y-m-d');
 
         $subjects = [];
@@ -47,14 +47,14 @@ final class ExamPlanController
     public static function apply(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        $exam = Owned::find('exams', $p['id'], $uid);
+        $exam = Owned::find('sp_exams', $p['id'], $uid);
         $items = $req->body['items'] ?? null;
         if (!is_array($items) || count($items) > self::MAX_ITEMS) {
             throw new HttpException(422, 'validation', '계획 형식이 올바르지 않거나 너무 많아요. (최대 ' . self::MAX_ITEMS . '개)', 'items');
         }
 
         $subjects = [];
-        foreach (Db::all('SELECT id, subject_id, exam_date FROM exam_subjects WHERE exam_id = ? AND user_id = ?', [$exam['id'], $uid]) as $s) {
+        foreach (Db::all('SELECT id, subject_id, exam_date FROM sp_exam_subjects WHERE exam_id = ? AND user_id = ?', [$exam['id'], $uid]) as $s) {
             $subjects[(int) $s['id']] = $s;
         }
         $today = date('Y-m-d');
@@ -81,12 +81,12 @@ final class ExamPlanController
 
         $kept = 0;
         Db::transaction(static function () use ($uid, $exam, $rows, &$kept): void {
-            $scope = "user_id = ? AND source = 'exam' AND ref_id IN (SELECT id FROM exam_subjects WHERE exam_id = ? AND user_id = ?)";
-            $kept = (int) Db::one("SELECT COUNT(*) AS n FROM tasks WHERE $scope AND done_at IS NOT NULL", [$uid, $exam['id'], $uid])['n'];
-            Db::run("DELETE FROM tasks WHERE $scope AND done_at IS NULL", [$uid, $exam['id'], $uid]);
+            $scope = "user_id = ? AND source = 'exam' AND ref_id IN (SELECT id FROM sp_exam_subjects WHERE exam_id = ? AND user_id = ?)";
+            $kept = (int) Db::one("SELECT COUNT(*) AS n FROM sp_tasks WHERE $scope AND done_at IS NOT NULL", [$uid, $exam['id'], $uid])['n'];
+            Db::run("DELETE FROM sp_tasks WHERE $scope AND done_at IS NULL", [$uid, $exam['id'], $uid]);
             foreach ($rows as $i => [$u, $subjectId, $esId, $title, $date, $minutes]) {
                 Db::run(
-                    "INSERT INTO tasks (user_id, subject_id, source, ref_id, title, task_date, est_minutes, sort_order)
+                    "INSERT INTO sp_tasks (user_id, subject_id, source, ref_id, title, task_date, est_minutes, sort_order)
                      VALUES (?, ?, 'exam', ?, ?, ?, ?, ?)",
                     [$u, $subjectId, $esId, $title, $date, $minutes, 100 + $i]
                 );
@@ -99,10 +99,10 @@ final class ExamPlanController
     public static function tasks(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        Owned::find('exams', $p['id'], $uid);
+        Owned::find('sp_exams', $p['id'], $uid);
         return TaskController::fetch(
             $uid,
-            "t.source = 'exam' AND t.ref_id IN (SELECT id FROM exam_subjects WHERE exam_id = ? AND user_id = ?)",
+            "t.source = 'exam' AND t.ref_id IN (SELECT id FROM sp_exam_subjects WHERE exam_id = ? AND user_id = ?)",
             [$p['id'], $uid]
         );
     }

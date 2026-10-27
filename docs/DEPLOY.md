@@ -18,7 +18,7 @@ scripts/package.sh        # dist/ 와 dist/sp-deploy.zip 생성 (Node, npm 필�
 3. SSL(HTTPS)을 적용한다. 세션 쿠키가 HTTPS에서 `Secure`로 설정된다.
 
 ## 2. 데이터베이스
-phpMyAdmin → 내 DB 선택 → 가져오기 → `dist/schema.sql` 실행. 테이블(사용자, 과목, 교재, 단원, 자료, 할 일, 복습, 시험, 수행평가 등)과 `schema_migrations`가 만들어진다. 이미 한 번 가져왔다면, 새로 생긴 `db/migrations/*.sql`만 phpMyAdmin에서 실행한다.
+phpMyAdmin → 내 DB 선택 → 가져오기 → `dist/schema.sql` 실행. 테이블(사용자, 과목, 교재, 단원, 자료, 할 일, 복습, 시험, 수행평가 등)과 `sp_schema_migrations`가 만들어진다. 테이블 이름은 모두 `sp_` 접두어라서 같은 DB의 다른 서비스 테이블과 겹치지 않는다. 이미 한 번 가져왔다면, 새로 생긴 `db/migrations/*.sql`만 phpMyAdmin에서 실행한다.
 
 ## 3. 파일 올리기 (FTP, 예: FileZilla)
 1. `dist/www_sp/` 안의 내용을 `www/sp/`에 올린다. (`.htaccess` 같은 점(.)으로 시작하는 파일도 함께 올라가야 한다. FTP 프로그램의 "숨김 파일 표시"를 켠다.)
@@ -53,7 +53,7 @@ phpMyAdmin → 내 DB 선택 → 가져오기 → `dist/schema.sql` 실행. 테�
 ## 6. 업데이트할 때
 - 화면만 바뀌면 `www/sp/`의 `_app/`, `index.html`을 교체한다.
 - API가 바뀌면 `sp_private/src/`와 `www/sp/api/`를 교체한다 (`config.php`, `uploads/`는 건드리지 않는다).
-- DB가 바뀌면 `db/migrations/`에 새 SQL이 생긴다. SSH를 쓸 수 있으면 `php scripts/migrate.php`, 아니면 새 SQL 파일만 phpMyAdmin에서 실행하고 `schema_migrations`에 파일 이름을 추가한다.
+- DB가 바뀌면 `db/migrations/`에 새 SQL이 생긴다. SSH를 쓸 수 있으면 `php scripts/migrate.php`, 아니면 새 SQL 파일만 phpMyAdmin에서 실행하고 `sp_schema_migrations`에 파일 이름을 추가한다.
 - 배포 전 확인: 로컬에서 `php backend/tests/api_test.php`와 `node scripts/e2e.cjs`가 통과해야 한다.
 
 ## 검증 기록

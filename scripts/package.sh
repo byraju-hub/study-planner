@@ -50,9 +50,9 @@ cp "$out/sp_private/.htaccess" "$out/sp_private/uploads/.htaccess"
 		cat "$f"
 		echo
 	done
-	echo "CREATE TABLE IF NOT EXISTS schema_migrations (name VARCHAR(100) NOT NULL PRIMARY KEY, applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;"
+	echo "CREATE TABLE IF NOT EXISTS sp_schema_migrations (name VARCHAR(100) NOT NULL PRIMARY KEY, applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;"
 	for f in $(ls "$root"/db/migrations/*.sql | sort); do
-		echo "INSERT IGNORE INTO schema_migrations (name) VALUES ('$(basename "$f")');"
+		echo "INSERT IGNORE INTO sp_schema_migrations (name) VALUES ('$(basename "$f")');"
 	done
 } > "$out/schema.sql"
 

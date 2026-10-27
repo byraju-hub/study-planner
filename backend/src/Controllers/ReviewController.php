@@ -22,7 +22,7 @@ final class ReviewController
 
     private const SELECT = 'SELECT r.id, r.subject_id, s.name AS subject_name, s.color AS subject_color,
                                    r.unit_id, r.title, r.stage, r.next_review_date, r.last_reviewed_at
-                              FROM review_items r LEFT JOIN subjects s ON s.id = r.subject_id';
+                              FROM sp_review_items r LEFT JOIN sp_subjects s ON s.id = r.subject_id';
 
     public static function list(Request $req): array
     {
@@ -42,7 +42,7 @@ final class ReviewController
         $subjectId = Input::ownedSubject($b, 'subject_id', $uid);
         $unitId = null;
         if (Input::int($b, 'unit_id', 1, PHP_INT_MAX, '단원', false) !== null) {
-            $unitId = (int) Owned::find('units', (int) $b['unit_id'], $uid)['id'];
+            $unitId = (int) Owned::find('sp_units', (int) $b['unit_id'], $uid)['id'];
         }
         $id = self::add($uid, $title, $subjectId, $unitId, date('Y-m-d'));
         return self::fetch($uid, 'r.id = ?', [$id], 'r.id', 1)[0];
@@ -51,7 +51,7 @@ final class ReviewController
     public static function done(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        $row = Owned::find('review_items', $p['id'], $uid);
+        $row = Owned::find('sp_review_items', $p['id'], $uid);
         if ($row['next_review_date'] === null) {
             throw new HttpException(409, 'finished', '이미 복습을 모두 마친 항목이에요.');
         }
@@ -71,7 +71,7 @@ final class ReviewController
         }
 
         Db::run(
-            'UPDATE review_items SET stage = ?, next_review_date = ?, last_reviewed_at = NOW() WHERE id = ? AND user_id = ?',
+            'UPDATE sp_review_items SET stage = ?, next_review_date = ?, last_reviewed_at = NOW() WHERE id = ? AND user_id = ?',
             [$newStage, $next, $row['id'], $uid]
         );
         return self::fetch($uid, 'r.id = ?', [(int) $row['id']], 'r.id', 1, false)[0] + ['finished' => $next === null];
@@ -80,8 +80,8 @@ final class ReviewController
     public static function delete(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        Owned::find('review_items', $p['id'], $uid);
-        Db::run('DELETE FROM review_items WHERE id = ? AND user_id = ?', [$p['id'], $uid]);
+        Owned::find('sp_review_items', $p['id'], $uid);
+        Db::run('DELETE FROM sp_review_items WHERE id = ? AND user_id = ?', [$p['id'], $uid]);
         return ['deleted' => true];
     }
 
@@ -89,7 +89,7 @@ final class ReviewController
     public static function add(int $uid, string $title, ?int $subjectId, ?int $unitId, string $baseDate): int
     {
         return Db::insert(
-            'INSERT INTO review_items (user_id, subject_id, unit_id, title, stage, next_review_date) VALUES (?, ?, ?, ?, 1, ?)',
+            'INSERT INTO sp_review_items (user_id, subject_id, unit_id, title, stage, next_review_date) VALUES (?, ?, ?, ?, 1, ?)',
             [$uid, $subjectId, $unitId, $title, self::addDays($baseDate, self::INTERVALS[0])]
         );
     }

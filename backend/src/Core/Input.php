@@ -86,7 +86,7 @@ final class Input
     {
         $id = self::int($d, $key, 1, PHP_INT_MAX, '과목', $required);
         if ($id !== null) {
-            Owned::find('subjects', $id, $userId);
+            Owned::find('sp_subjects', $id, $userId);
         }
         return $id;
     }

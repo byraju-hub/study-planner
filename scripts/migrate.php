@@ -17,12 +17,12 @@ $pdo = new PDO(
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
 );
 
-$pdo->exec('CREATE TABLE IF NOT EXISTS schema_migrations (
+$pdo->exec('CREATE TABLE IF NOT EXISTS sp_schema_migrations (
     name VARCHAR(100) NOT NULL PRIMARY KEY,
     applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
 
-$done = $pdo->query('SELECT name FROM schema_migrations')->fetchAll(PDO::FETCH_COLUMN);
+$done = $pdo->query('SELECT name FROM sp_schema_migrations')->fetchAll(PDO::FETCH_COLUMN);
 $files = glob($root . '/db/migrations/*.sql') ?: [];
 sort($files);
 
@@ -40,7 +40,7 @@ foreach ($files as $file) {
             $pdo->exec($sql);
         }
     }
-    $pdo->prepare('INSERT INTO schema_migrations (name) VALUES (?)')->execute([$name]);
+    $pdo->prepare('INSERT INTO sp_schema_migrations (name) VALUES (?)')->execute([$name]);
     $applied++;
 }
 

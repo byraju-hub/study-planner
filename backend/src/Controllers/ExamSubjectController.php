@@ -16,7 +16,7 @@ final class ExamSubjectController
     public static function add(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        $exam = Owned::find('exams', $p['id'], $uid);
+        $exam = Owned::find('sp_exams', $p['id'], $uid);
         $b = $req->body;
         $subjectId = (int) Input::ownedSubject($b, 'subject_id', $uid, true);
         $date = self::examDate($b, $exam, $exam['start_date']);
@@ -25,7 +25,7 @@ final class ExamSubjectController
 
         try {
             Db::insert(
-                'INSERT INTO exam_subjects (user_id, exam_id, subject_id, exam_date, period, target_score, target_grade)
+                'INSERT INTO sp_exam_subjects (user_id, exam_id, subject_id, exam_date, period, target_score, target_grade)
                  VALUES (?, ?, ?, ?, ?, ?, ?)',
                 [$uid, $exam['id'], $subjectId, $date, $period, $score, $grade]
             );
@@ -40,8 +40,8 @@ final class ExamSubjectController
     public static function update(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        $row = Owned::find('exam_subjects', $p['id'], $uid);
-        $exam = Owned::find('exams', (int) $row['exam_id'], $uid);
+        $row = Owned::find('sp_exam_subjects', $p['id'], $uid);
+        $exam = Owned::find('sp_exams', (int) $row['exam_id'], $uid);
         $b = $req->body;
 
         $date = array_key_exists('exam_date', $b) ? self::examDate($b, $exam, $row['exam_date']) : $row['exam_date'];
@@ -52,7 +52,7 @@ final class ExamSubjectController
             ? self::scoreGrade($b, 'actual') : [$row['actual_score'], $row['actual_grade']];
 
         Db::run(
-            'UPDATE exam_subjects SET exam_date = ?, period = ?, target_score = ?, target_grade = ?, actual_score = ?, actual_grade = ?
+            'UPDATE sp_exam_subjects SET exam_date = ?, period = ?, target_score = ?, target_grade = ?, actual_score = ?, actual_grade = ?
               WHERE id = ? AND user_id = ?',
             [$date, $period, $target[0], $target[1], $actual[0], $actual[1], $row['id'], $uid]
         );
@@ -62,10 +62,10 @@ final class ExamSubjectController
     public static function delete(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        $row = Owned::find('exam_subjects', $p['id'], $uid);
+        $row = Owned::find('sp_exam_subjects', $p['id'], $uid);
         Db::transaction(static function () use ($uid, $row): void {
-            Db::run("DELETE FROM tasks WHERE user_id = ? AND source = 'exam' AND ref_id = ?", [$uid, $row['id']]);
-            Db::run('DELETE FROM exam_subjects WHERE id = ? AND user_id = ?', [$row['id'], $uid]);
+            Db::run("DELETE FROM sp_tasks WHERE user_id = ? AND source = 'exam' AND ref_id = ?", [$uid, $row['id']]);
+            Db::run('DELETE FROM sp_exam_subjects WHERE id = ? AND user_id = ?', [$row['id'], $uid]);
         });
         return ExamController::detail($uid, (int) $row['exam_id']);
     }
@@ -74,9 +74,9 @@ final class ExamSubjectController
     public static function addScopes(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        $es = Owned::find('exam_subjects', $p['id'], $uid);
+        $es = Owned::find('sp_exam_subjects', $p['id'], $uid);
         $b = $req->body;
-        $next = (int) Db::one('SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM exam_scopes WHERE exam_subject_id = ?', [$es['id']])['n'];
+        $next = (int) Db::one('SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM sp_exam_scopes WHERE exam_subject_id = ?', [$es['id']])['n'];
 
         Db::transaction(function () use ($uid, $es, $b, &$next): void {
             if (isset($b['unit_ids'])) {
@@ -87,19 +87,19 @@ final class ExamSubjectController
                 foreach (array_values(array_unique(array_map('intval', $ids))) as $unitId) {
                     $unit = Db::one(
                         'SELECT u.id, u.title, u.page_start, u.page_end, t.subject_id
-                           FROM units u JOIN textbooks t ON t.id = u.textbook_id
+                           FROM sp_units u JOIN sp_textbooks t ON t.id = u.textbook_id
                           WHERE u.id = ? AND u.user_id = ?',
                         [$unitId, $uid]
                     );
                     if ($unit === null || (int) $unit['subject_id'] !== (int) $es['subject_id']) {
                         throw new HttpException(422, 'validation', '이 과목의 단원만 시험 범위로 추가할 수 있어요.', 'unit_ids');
                     }
-                    $dup = Db::one('SELECT id FROM exam_scopes WHERE exam_subject_id = ? AND unit_id = ?', [$es['id'], $unitId]);
+                    $dup = Db::one('SELECT id FROM sp_exam_scopes WHERE exam_subject_id = ? AND unit_id = ?', [$es['id'], $unitId]);
                     if ($dup !== null) {
                         continue;
                     }
                     Db::run(
-                        'INSERT INTO exam_scopes (user_id, exam_subject_id, unit_id, label, page_start, page_end, sort_order)
+                        'INSERT INTO sp_exam_scopes (user_id, exam_subject_id, unit_id, label, page_start, page_end, sort_order)
                          VALUES (?, ?, ?, ?, ?, ?, ?)',
                         [$uid, $es['id'], $unitId, $unit['title'], $unit['page_start'], $unit['page_end'], $next++]
                     );
@@ -110,7 +110,7 @@ final class ExamSubjectController
             $label = (string) Input::str($b, 'label', 1, 120, '범위');
             [$start, $end] = self::pages($b);
             Db::run(
-                'INSERT INTO exam_scopes (user_id, exam_subject_id, label, page_start, page_end, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
+                'INSERT INTO sp_exam_scopes (user_id, exam_subject_id, label, page_start, page_end, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
                 [$uid, $es['id'], $label, $start, $end, $next]
             );
         });
@@ -120,7 +120,7 @@ final class ExamSubjectController
     public static function updateScope(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        $row = Owned::find('exam_scopes', $p['id'], $uid);
+        $row = Owned::find('sp_exam_scopes', $p['id'], $uid);
         $b = $req->body;
         $label = Input::str($b, 'label', 1, 120, '범위', false) ?? $row['label'];
         [$start, $end] = array_key_exists('page_start', $b) || array_key_exists('page_end', $b)
@@ -129,19 +129,19 @@ final class ExamSubjectController
         $order = Input::int($b, 'sort_order', 0, 100000, '순서', false) ?? (int) $row['sort_order'];
 
         Db::run(
-            'UPDATE exam_scopes SET label = ?, page_start = ?, page_end = ?, progress = ?, sort_order = ? WHERE id = ? AND user_id = ?',
+            'UPDATE sp_exam_scopes SET label = ?, page_start = ?, page_end = ?, progress = ?, sort_order = ? WHERE id = ? AND user_id = ?',
             [$label, $start, $end, $progress, $order, $row['id'], $uid]
         );
-        $es = Owned::find('exam_subjects', (int) $row['exam_subject_id'], $uid);
+        $es = Owned::find('sp_exam_subjects', (int) $row['exam_subject_id'], $uid);
         return ExamController::detail($uid, (int) $es['exam_id']);
     }
 
     public static function deleteScope(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        $row = Owned::find('exam_scopes', $p['id'], $uid);
-        $es = Owned::find('exam_subjects', (int) $row['exam_subject_id'], $uid);
-        Db::run('DELETE FROM exam_scopes WHERE id = ? AND user_id = ?', [$row['id'], $uid]);
+        $row = Owned::find('sp_exam_scopes', $p['id'], $uid);
+        $es = Owned::find('sp_exam_subjects', (int) $row['exam_subject_id'], $uid);
+        Db::run('DELETE FROM sp_exam_scopes WHERE id = ? AND user_id = ?', [$row['id'], $uid]);
         return ExamController::detail($uid, (int) $es['exam_id']);
     }
 

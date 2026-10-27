@@ -28,7 +28,7 @@ final class SubjectController
     {
         foreach (self::DEFAULTS as $i => [$name, $color]) {
             Db::run(
-                'INSERT INTO subjects (user_id, name, color, sort_order) VALUES (?, ?, ?, ?)',
+                'INSERT INTO sp_subjects (user_id, name, color, sort_order) VALUES (?, ?, ?, ?)',
                 [$userId, $name, $color, $i + 1]
             );
         }
@@ -38,8 +38,8 @@ final class SubjectController
     {
         return Db::all(
             'SELECT s.id, s.name, s.color, s.sort_order,
-                    (SELECT COUNT(*) FROM textbooks t WHERE t.subject_id = s.id) AS textbook_count
-               FROM subjects s
+                    (SELECT COUNT(*) FROM sp_textbooks t WHERE t.subject_id = s.id) AS textbook_count
+               FROM sp_subjects s
               WHERE s.user_id = ? AND s.is_active = 1
               ORDER BY s.sort_order, s.id',
             [Session::requireUser()]
@@ -51,11 +51,11 @@ final class SubjectController
         $uid = Session::requireUser();
         $name = Input::str($req->body, 'name', 1, 40, '과목 이름');
         $color = Input::color($req->body, 'color', '#5B6475');
-        $next = (int) (Db::one('SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM subjects WHERE user_id = ?', [$uid])['n'] ?? 1);
+        $next = (int) (Db::one('SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM sp_subjects WHERE user_id = ?', [$uid])['n'] ?? 1);
 
         try {
             $id = Db::insert(
-                'INSERT INTO subjects (user_id, name, color, sort_order) VALUES (?, ?, ?, ?)',
+                'INSERT INTO sp_subjects (user_id, name, color, sort_order) VALUES (?, ?, ?, ?)',
                 [$uid, $name, $color, $next]
             );
         } catch (\PDOException $e) {
@@ -69,12 +69,12 @@ final class SubjectController
     public static function update(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        $row = Owned::find('subjects', $p['id'], $uid);
+        $row = Owned::find('sp_subjects', $p['id'], $uid);
         $name = Input::str($req->body, 'name', 1, 40, '과목 이름', false) ?? $row['name'];
         $color = Input::color($req->body, 'color', $row['color']);
 
         try {
-            Db::run('UPDATE subjects SET name = ?, color = ? WHERE id = ? AND user_id = ?', [$name, $color, $row['id'], $uid]);
+            Db::run('UPDATE sp_subjects SET name = ?, color = ? WHERE id = ? AND user_id = ?', [$name, $color, $row['id'], $uid]);
         } catch (\PDOException $e) {
             throw Owned::isDuplicate($e)
                 ? new HttpException(409, 'duplicate', '이미 있는 과목 이름입니다.', 'name')
@@ -86,9 +86,9 @@ final class SubjectController
     public static function delete(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        Owned::find('subjects', $p['id'], $uid);
+        Owned::find('sp_subjects', $p['id'], $uid);
         $files = Files::pathsUnderSubject($p['id'], $uid);
-        Db::run('DELETE FROM subjects WHERE id = ? AND user_id = ?', [$p['id'], $uid]);
+        Db::run('DELETE FROM sp_subjects WHERE id = ? AND user_id = ?', [$p['id'], $uid]);
         Files::remove($files);
         return ['deleted' => true];
     }

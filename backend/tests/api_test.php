@@ -16,7 +16,7 @@ if (is_file($testConfig)) {
     $db = (require $testConfig)['db'];
     if (str_ends_with($db['name'], '_test')) {
         $pdo = new PDO("mysql:host={$db['host']};port=" . ($db['port'] ?? 3306) . ";dbname={$db['name']};charset=utf8mb4", $db['user'], $db['pass']);
-        $pdo->exec('DELETE FROM login_attempts');
+        $pdo->exec('DELETE FROM sp_login_attempts');
     }
 }
 $failures = 0;
