@@ -1,0 +1,6 @@
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ index.php [L,QSA]
+
+# 서버가 보내지 않는 요청 헤더(Authorization 등) 전달
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]

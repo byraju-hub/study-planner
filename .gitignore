@@ -1,0 +1,10 @@
+backend/config.php
+backend/config.*.php
+!backend/config.example.php
+backend/uploads/
+backend/public/root.php
+frontend/node_modules/
+frontend/build/
+frontend/.svelte-kit/
+.env
+*.log

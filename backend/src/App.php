@@ -1,0 +1,68 @@
+<?php
+declare(strict_types=1);
+
+namespace App;
+
+use App\Controllers\AuthController;
+use App\Controllers\SubjectController;
+use App\Core\Db;
+use App\Core\HttpException;
+use App\Core\Request;
+use App\Core\Router;
+use App\Core\Session;
+
+final class App
+{
+    public static function run(string $root): void
+    {
+        $configPath = getenv('SP_CONFIG') ?: $root . '/config.php';
+        $config = is_file($configPath) ? require $configPath : null;
+        if (!is_array($config)) {
+            http_response_code(500);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'error' => ['code' => 'config', 'message' => '서버 설정 파일이 없습니다.']], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+        $GLOBALS['sp_config'] = $config;
+        $debug = (bool) ($config['debug'] ?? false);
+
+        ini_set('display_errors', '0');
+        date_default_timezone_set($config['timezone'] ?? 'Asia/Seoul');
+
+        try {
+            Db::init($config['db']);
+            Session::start($config['session'] ?? []);
+            $req = Request::fromGlobals($config['base_path'] ?? '');
+            self::routes()->dispatch($req);
+        } catch (HttpException $e) {
+            $err = ['code' => $e->errorCode, 'message' => $e->getMessage()];
+            if ($e->field !== null) {
+                $err['field'] = $e->field;
+            }
+            Router::json(['ok' => false, 'error' => $err], $e->status);
+        } catch (\Throwable $e) {
+            error_log($e::class . ': ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+            $msg = $debug ? $e->getMessage() : '서버에 문제가 생겼어요. 잠시 뒤에 다시 시도해 주세요.';
+            Router::json(['ok' => false, 'error' => ['code' => 'server_error', 'message' => $msg]], 500);
+        }
+    }
+
+    private static function routes(): Router
+    {
+        $r = new Router();
+
+        $r->add('GET', '/auth/me', [AuthController::class, 'me'], false);
+        $r->add('POST', '/auth/signup', [AuthController::class, 'signup'], false);
+        $r->add('POST', '/auth/login', [AuthController::class, 'login'], false);
+        $r->add('POST', '/auth/logout', [AuthController::class, 'logout'], false);
+        $r->add('PUT', '/auth/password', [AuthController::class, 'changePassword']);
+        $r->add('PUT', '/auth/profile', [AuthController::class, 'updateProfile']);
+
+        $r->add('GET', '/subjects', [SubjectController::class, 'list']);
+        $r->add('POST', '/subjects', [SubjectController::class, 'create']);
+        $r->add('PUT', '/subjects/{id}', [SubjectController::class, 'update']);
+        $r->add('DELETE', '/subjects/{id}', [SubjectController::class, 'delete']);
+
+        return $r;
+    }
+}
