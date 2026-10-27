@@ -4,7 +4,10 @@ declare(strict_types=1);
 namespace App;
 
 use App\Controllers\AuthController;
+use App\Controllers\MaterialController;
 use App\Controllers\SubjectController;
+use App\Controllers\TextbookController;
+use App\Controllers\UnitController;
 use App\Core\Db;
 use App\Core\HttpException;
 use App\Core\Request;
@@ -62,6 +65,23 @@ final class App
         $r->add('POST', '/subjects', [SubjectController::class, 'create']);
         $r->add('PUT', '/subjects/{id}', [SubjectController::class, 'update']);
         $r->add('DELETE', '/subjects/{id}', [SubjectController::class, 'delete']);
+
+        $r->add('GET', '/textbooks', [TextbookController::class, 'list']);
+        $r->add('POST', '/textbooks', [TextbookController::class, 'create']);
+        $r->add('PUT', '/textbooks/{id}', [TextbookController::class, 'update']);
+        $r->add('DELETE', '/textbooks/{id}', [TextbookController::class, 'delete']);
+
+        $r->add('GET', '/units', [UnitController::class, 'list']);
+        $r->add('POST', '/units', [UnitController::class, 'create']);
+        $r->add('PUT', '/units/{id}', [UnitController::class, 'update']);
+        $r->add('DELETE', '/units/{id}', [UnitController::class, 'delete']);
+
+        $r->add('GET', '/materials', [MaterialController::class, 'list']);
+        $r->add('POST', '/materials', [MaterialController::class, 'create']);
+        $r->add('POST', '/materials/upload', [MaterialController::class, 'upload']);
+        $r->add('GET', '/materials/{id}/file', [MaterialController::class, 'file']);
+        $r->add('PUT', '/materials/{id}', [MaterialController::class, 'update']);
+        $r->add('DELETE', '/materials/{id}', [MaterialController::class, 'delete']);
 
         return $r;
     }

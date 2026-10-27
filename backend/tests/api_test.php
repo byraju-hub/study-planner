@@ -25,6 +25,7 @@ function check(string $label, bool $cond, mixed $detail = null): void
 final class Client
 {
     public string $csrf = '';
+    public string $lastType = '';
     private string $jar;
 
     public function __construct(private string $base)
@@ -55,6 +56,7 @@ final class Client
         ]);
         $body = (string) curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $this->lastType = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
         curl_close($ch);
         $data = json_decode($body, true);
         return [$status, is_array($data) ? $data : null, $body];
@@ -172,6 +174,112 @@ check('남의 과목 삭제 → 404', $s === 404, $r);
 
 [$s, $r] = $a->call('DELETE', "/subjects/$subId");
 check('과목 삭제', $s === 200, $r);
+
+echo "[교재]\n";
+[, $r] = $a->call('GET', '/subjects');
+$mathId = 0;
+foreach ($r['data'] as $row) {
+    if ($row['name'] === '공통수학') {
+        $mathId = $row['id'];
+    }
+}
+[$s, $r] = $a->call('POST', '/textbooks', ['subject_id' => $mathId, 'title' => '공통수학1 교과서', 'kind' => 'textbook', 'publisher' => '테스트출판', 'total_pages' => 300]);
+check('교재 추가', $s === 200 && $r['data']['title'] === '공통수학1 교과서', $r);
+$tbId = $r['data']['id'] ?? 0;
+[$s, $r] = $a->call('POST', '/textbooks', ['subject_id' => $mathId, 'title' => '문제집', 'kind' => 'bogus']);
+check('교재 종류 오류 → 422', $s === 422, $r);
+[$s, $r] = $a->call('GET', "/textbooks?subject_id=$mathId");
+check('교재 목록', $s === 200 && count($r['data']) === 1 && $r['data'][0]['unit_count'] === 0, $r);
+[$s, $r] = $a->call('PUT', "/textbooks/$tbId", ['title' => '공통수학1 (수정)', 'publisher' => null]);
+check('교재 수정 + 출판사 비우기', $s === 200 && $r['data']['publisher'] === null && $r['data']['total_pages'] === 300, $r);
+[$s, $r] = $b->call('GET', "/textbooks?subject_id=$mathId");
+check('남의 과목의 교재 목록 → 404', $s === 404, $r);
+[$s, $r] = $b->call('PUT', "/textbooks/$tbId", ['title' => '해킹']);
+check('남의 교재 수정 → 404', $s === 404, $r);
+
+echo "[단원]\n";
+[$s, $r] = $a->call('POST', '/units', ['textbook_id' => $tbId, 'title' => '1. 다항식', 'page_start' => 8, 'page_end' => 41]);
+check('대단원 추가', $s === 200 && $r['data']['parent_id'] === null && $r['data']['sort_order'] === 1, $r);
+$bigId = $r['data']['id'] ?? 0;
+[$s, $r] = $a->call('POST', '/units', ['textbook_id' => $tbId, 'parent_id' => $bigId, 'title' => '1-1 다항식의 연산', 'page_start' => 8, 'page_end' => 25]);
+check('중단원 추가', $s === 200 && $r['data']['parent_id'] === $bigId, $r);
+$smallId = $r['data']['id'] ?? 0;
+[$s, $r] = $a->call('POST', '/units', ['textbook_id' => $tbId, 'parent_id' => $smallId, 'title' => '3단계']);
+check('중단원 아래 단원 → 422', $s === 422, $r);
+[$s, $r] = $a->call('POST', '/units', ['textbook_id' => $tbId, 'title' => '쪽수 오류', 'page_start' => 30, 'page_end' => 10]);
+check('끝 쪽 < 시작 쪽 → 422', $s === 422 && ($r['error']['field'] ?? '') === 'page_end', $r);
+
+[$s, $r] = $a->call('POST', '/textbooks', ['subject_id' => $mathId, 'title' => '다른 교재']);
+$tb2 = $r['data']['id'];
+[$s, $r] = $a->call('POST', '/units', ['textbook_id' => $tb2, 'parent_id' => $bigId, 'title' => '다른 교재의 대단원 사용']);
+check('다른 교재의 대단원을 부모로 → 422', $s === 422, $r);
+
+[$s, $r] = $a->call('GET', "/units?textbook_id=$tbId");
+check('단원 목록 2개', $s === 200 && count($r['data']) === 2, $r);
+[$s, $r] = $a->call('PUT', "/units/$smallId", ['title' => '1-1 (수정)', 'page_start' => 9, 'page_end' => 24]);
+check('단원 수정', $s === 200 && $r['data']['title'] === '1-1 (수정)' && $r['data']['page_start'] === 9, $r);
+[$s, $r] = $b->call('POST', '/units', ['textbook_id' => $tbId, 'title' => '남의 교재']);
+check('남의 교재에 단원 추가 → 404', $s === 404, $r);
+
+echo "[자료]\n";
+[$s, $r] = $a->call('POST', '/materials', ['unit_id' => $smallId, 'type' => 'note', 'title' => '곱셈 공식', 'content' => "(a+b)^2 = a^2 + 2ab + b^2\n줄바꿈 확인"]);
+check('메모 추가 (줄바꿈 보존)', $s === 200 && str_contains($r['data']['content'], "\n"), $r);
+$noteId = $r['data']['id'] ?? 0;
+[$s, $r] = $a->call('POST', '/materials', ['unit_id' => $smallId, 'type' => 'note', 'title' => '빈 메모', 'content' => '  ']);
+check('빈 메모 → 422', $s === 422, $r);
+[$s, $r] = $a->call('POST', '/materials', ['unit_id' => $smallId, 'type' => 'link', 'title' => '강의', 'url' => 'https://example.com/a?b=1']);
+check('링크 추가', $s === 200 && $r['data']['url'] === 'https://example.com/a?b=1', $r);
+[$s, $r] = $a->call('POST', '/materials', ['unit_id' => $smallId, 'type' => 'link', 'title' => '나쁜 링크', 'url' => 'javascript:alert(1)']);
+check('javascript: 링크 → 422', $s === 422 && ($r['error']['field'] ?? '') === 'url', $r);
+[$s, $r] = $a->call('PUT', "/materials/$noteId", ['title' => '곱셈 공식(수정)', 'content' => '수정된 내용']);
+check('메모 수정', $s === 200 && $r['data']['content'] === '수정된 내용', $r);
+
+$png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+$tmpPng = tempnam(sys_get_temp_dir(), 'png');
+file_put_contents($tmpPng, $png);
+$tmpTxt = tempnam(sys_get_temp_dir(), 'txt');
+file_put_contents($tmpTxt, 'not an image');
+
+[$s, $r] = $a->call('POST', '/materials/upload', null, ['unit_id' => $smallId, 'title' => '필기 사진', 'file' => new CURLFile($tmpPng, 'image/png', '필기.png')]);
+check('PNG 업로드', $s === 200 && $r['data']['type'] === 'file' && $r['data']['file_name'] === '필기.png' && !isset($r['data']['file_path']), $r);
+$fileId = $r['data']['id'] ?? 0;
+[$s, $r] = $a->call('POST', '/materials/upload', null, ['unit_id' => $smallId, 'file' => new CURLFile($tmpTxt, 'text/plain', 'fake.png')]);
+check('내용이 이미지가 아닌 .png → 422', $s === 422, $r);
+[$s, $r] = $a->call('POST', '/materials/upload', null, ['unit_id' => $smallId, 'file' => new CURLFile($tmpTxt, 'text/plain', 'run.php')]);
+check('허용되지 않은 확장자 → 422', $s === 422, $r);
+[$s, $r] = $a->call('POST', '/materials/upload', null, ['unit_id' => $smallId]);
+check('파일 없음 → 422', $s === 422, $r);
+
+[$s, , $raw] = $a->call('GET', "/materials/$fileId/file");
+check('내 파일 내려받기', $s === 200 && $raw === $png && str_starts_with($a->lastType, 'image/png'), [$s, $a->lastType]);
+[$s, $r] = $b->call('GET', "/materials/$fileId/file");
+check('남의 파일 → 404', $s === 404, $r);
+[$s, $r] = $b->call('GET', "/materials?unit_id=$smallId");
+check('남의 단원의 자료 목록 → 404', $s === 404, $r);
+
+$uploadRoot = sys_get_temp_dir() . '/sp_test_uploads';
+$countFiles = static fn(): int => count(glob($uploadRoot . '/' . $u1['id'] . '/*') ?: []);
+check('업로드 파일이 디스크에 있음', $countFiles() === 1, $countFiles());
+[$s, $r] = $a->call('DELETE', "/materials/$fileId");
+check('자료 삭제 시 파일도 삭제', $s === 200 && $countFiles() === 0, $countFiles());
+
+[$s, $r] = $a->call('POST', '/materials/upload', null, ['unit_id' => $smallId, 'file' => new CURLFile($tmpPng, 'image/png', 'again.png')]);
+check('다시 업로드', $s === 200, $r);
+[$s, $r] = $a->call('DELETE', "/units/$bigId");
+check('대단원 삭제 → 하위 단원·자료·파일 삭제', $s === 200 && $countFiles() === 0, $countFiles());
+[$s, $r] = $a->call('GET', "/units?textbook_id=$tbId");
+check('삭제 후 단원 없음', $s === 200 && count($r['data']) === 0, $r);
+
+[$s, $r] = $a->call('POST', '/units', ['textbook_id' => $tbId, 'title' => '1. 다시']);
+$u3 = $r['data']['id'];
+$a->call('POST', '/materials/upload', null, ['unit_id' => $u3, 'file' => new CURLFile($tmpPng, 'image/png', 'z.png')]);
+check('교재 삭제 전 파일 1개', $countFiles() === 1, $countFiles());
+[$s, $r] = $a->call('DELETE', "/subjects/$mathId");
+check('과목 삭제 → 교재·파일 삭제', $s === 200 && $countFiles() === 0, $countFiles());
+[$s, $r] = $a->call('GET', "/textbooks?subject_id=$mathId");
+check('삭제된 과목 → 404', $s === 404, $r);
+unlink($tmpPng);
+unlink($tmpTxt);
 
 echo "\n" . ($failures === 0 ? "전체 통과 ($checks)" : "실패 $failures / $checks") . "\n";
 exit($failures === 0 ? 0 : 1);

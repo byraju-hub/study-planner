@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Core\Db;
+use App\Core\Files;
 use App\Core\HttpException;
 use App\Core\Input;
 use App\Core\Owned;
@@ -86,7 +87,9 @@ final class SubjectController
     {
         $uid = Session::requireUser();
         Owned::find('subjects', $p['id'], $uid);
+        $files = Files::pathsUnderSubject($p['id'], $uid);
         Db::run('DELETE FROM subjects WHERE id = ? AND user_id = ?', [$p['id'], $uid]);
+        Files::remove($files);
         return ['deleted' => true];
     }
 }
