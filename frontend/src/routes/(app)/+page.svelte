@@ -4,22 +4,24 @@
 	import { auth } from '#lib/auth.svelte.js';
 	import { get } from '#lib/api.js';
 
-	import { fmtDate, fmtDday, fmtMD, fmtMinutes } from '#lib/format.js';
+	import { dueLabel, fmtDate, fmtDday, fmtMD, fmtMinutes } from '#lib/format.js';
 
 	let subjects = $state([]);
 	let study = $state(null);
 	let exams = $state([]);
+	let assessments = $state([]);
 	let error = $state('');
 
 	onMount(async () => {
 		try {
-			[subjects, study, exams] = await Promise.all([get('/subjects'), get('/study/today'), get('/exams')]);
+			[subjects, study, exams, assessments] = await Promise.all([get('/subjects'), get('/study/today'), get('/exams'), get('/assessments')]);
 		} catch (e) {
 			error = e.message;
 		}
 	});
 
 	const nextExam = $derived(exams.find((e) => e.status !== 'done') ?? null);
+	const dueSoon = $derived(assessments.filter((a) => (a.status === 'planned' || a.status === 'in_progress') && a.d_day <= 14).slice(0, 3));
 	const doneTasks = $derived(study ? study.tasks.filter((t) => t.done).length : 0);
 </script>
 
@@ -42,6 +44,19 @@
 			</div>
 			<strong class="dday">{nextExam.status === 'ongoing' ? '시험 중' : fmtDday(nextExam.d_day)}</strong>
 		</a>
+	{/if}
+
+	{#if dueSoon.length > 0}
+		<section class="card stack" aria-label="마감 임박 수행평가">
+			<div class="row-between"><h2>마감 임박 수행평가</h2><a class="small" href={resolve('/assessments')}>전체 보기</a></div>
+			{#each dueSoon as a (a.id)}
+				<a class="due" href={resolve('/assessments/[id]', { id: String(a.id) })}>
+					<span class="badge" class:urgent={a.d_day <= 3}>{dueLabel(a)}</span>
+					<span class="grow">{a.subject_name} · {a.title}</span>
+					<span class="muted small">{fmtMD(a.due_date)} · {a.step_done}/{a.step_total}</span>
+				</a>
+			{/each}
+		</section>
 	{/if}
 
 	{#if study}
@@ -104,6 +119,26 @@
 		height: 8px;
 		border-radius: 4px;
 		background: var(--accent);
+	}
+	.due {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		min-height: 44px;
+		text-decoration: none;
+		color: var(--ink);
+	}
+	.badge {
+		padding: 3px 10px;
+		border-radius: 999px;
+		background: #e9e7e0;
+		font-size: 12px;
+		font-weight: 700;
+		white-space: nowrap;
+	}
+	.badge.urgent {
+		background: var(--danger);
+		color: #fff;
 	}
 	.today {
 		display: flex;

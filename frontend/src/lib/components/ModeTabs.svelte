@@ -6,7 +6,8 @@
 
 	const modes = [
 		{ id: 'study', href: '/study', label: '일반 스터디' },
-		{ id: 'exam', href: '/exams', label: '시험 대비' }
+		{ id: 'exam', href: '/exams', label: '시험 대비' },
+		{ id: 'assess', href: '/assessments', label: '수행평가' }
 	];
 </script>
 

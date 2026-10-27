@@ -46,6 +46,9 @@ cd frontend && npm install
 npm run build        # frontend/build 생성 (dev-router가 이 폴더를 /sp/ 로 서빙)
 npm run dev          # Vite 개발 서버 (API는 8080으로 프록시)
 
+# 계획 계산 테스트 (DB·서버 없이)
+php backend/tests/plan_test.php
+
 # 백엔드 API 테스트: 테스트 DB를 쓰는 서버를 8081에 따로 띄운다
 SP_CONFIG=$PWD/backend/config.test.php php -d upload_max_filesize=12M -d post_max_size=14M -S 127.0.0.1:8081 scripts/dev-router.php &
 php backend/tests/api_test.php
@@ -58,6 +61,7 @@ scripts/package.sh
 ```
 
 ## 작업 방식
+- 시험·수행평가 계획 같은 계산 로직은 `backend/src/Services/`에 DB 없는 순수 함수로 두고 `plan_test.php`로 검증한다.
 - 단계(`docs/PROGRESS.md`)별로 진행하고, 기능 하나가 끝날 때마다 커밋·푸시한다.
 - 단계가 끝나면 `docs/PROGRESS.md`의 체크 표시와 "다음 할 일"을 갱신한다.
 - 확인하지 못한 외부 서비스 명세(나이스, 알라딘 등)는 추측해서 구현하지 말고 문서의 "확인 필요"를 유지한다.

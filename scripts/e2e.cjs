@@ -53,7 +53,7 @@ function ok(label, cond, extra = '') {
 	await page.screenshot({ path: path.join(OUT, '02-home.png') });
 
 	console.log('[과목]');
-	await page.click('nav a:has-text("과목 · 교재")');
+	await page.click('nav.nav a:has-text("과목·교재")');
 	await page.waitForSelector('h1:has-text("과목 · 교재")');
 	await page.fill('#new-name', '논술');
 	await page.click('form button:has-text("추가")');
@@ -140,7 +140,7 @@ function ok(label, cond, extra = '') {
 	await page.setViewportSize({ width: 1440, height: 900 });
 
 	console.log('[로그아웃/로그인]');
-	await page.click('nav a:has-text("설정")');
+	await page.click('nav.nav a:has-text("설정")');
 	await page.waitForSelector('h1:has-text("설정")');
 	await page.click('button:has-text("로그아웃")');
 	await page.waitForURL(`${BASE}/login`);
@@ -167,7 +167,7 @@ function ok(label, cond, extra = '') {
 	console.log('[일반 스터디]');
 	const seoulDay = new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul', weekday: 'short' });
 	const isWeekday = !['Sat', 'Sun'].includes(seoulDay);
-	await page.click('nav a:has-text("일반 스터디")');
+	await page.click('nav.nav a:has-text("스터디")');
 	await page.waitForSelector('h1:has-text("일반 스터디")');
 	await page.click('a:has-text("시간표 설정")');
 	await page.waitForSelector('h1:has-text("시간표")');
@@ -238,7 +238,7 @@ function ok(label, cond, extra = '') {
 	await page.screenshot({ path: path.join(OUT, '09-study-mobile.png'), fullPage: true });
 	await page.setViewportSize({ width: 1440, height: 900 });
 
-	await page.click('nav a:has-text("홈")');
+	await page.click('nav.nav a:has-text("홈")');
 	await page.waitForSelector('a.today');
 	ok('홈에 오늘 요약 표시', (await page.locator('a.today').textContent()).includes('1/1'));
 
@@ -248,7 +248,7 @@ function ok(label, cond, extra = '') {
 		const [y, m, d] = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }).split('-').map(Number);
 		return new Date(Date.UTC(y, m - 1, d + plusDays)).toISOString().slice(0, 10);
 	};
-	await page.click('nav a:has-text("시험 대비")');
+	await page.click('nav.nav a:has-text("시험 대비")');
 	await page.waitForSelector('h1:has-text("시험 대비")');
 	await page.click('button:has-text("+ 시험 추가")');
 	await page.fill('#x-title', '2학기 중간고사');
@@ -316,26 +316,77 @@ function ok(label, cond, extra = '') {
 	ok('시험 결과 입력', true);
 	await page.screenshot({ path: path.join(OUT, '11-exam-detail.png'), fullPage: true });
 
-	await page.click('nav a:has-text("일반 스터디")');
+	await page.click('nav.nav a:has-text("스터디")');
 	await page.waitForSelector('section[aria-label="오늘 할 일"]');
 	await page.waitForSelector('section[aria-label="오늘 할 일"] li:has-text("시험")');
 	ok('오늘 할 일에 시험 계획이 함께 보임', true);
 
-	await page.click('nav a:has-text("홈")');
+	await page.click('nav.nav a:has-text("홈")');
 	await page.waitForSelector('a.exam');
 	ok('홈에 시험 D-day 카드', (await page.locator('a.exam').textContent()).includes('D-14'));
 	await page.screenshot({ path: path.join(OUT, '12-home.png'), fullPage: true });
 
-	await page.click('nav a:has-text("시험 대비")');
+	await page.click('nav.nav a:has-text("시험 대비")');
 	await page.click('a.card.item:has-text("2학기 중간고사")');
 	await page.waitForSelector('h1:has-text("2학기 중간고사")');
 	await page.click('button:has-text("시험 삭제")');
 	await page.waitForURL(`${BASE}/exams`);
 	await page.waitForSelector('.empty:has-text("등록된 시험이 없어요")');
 	ok('시험 삭제 → 목록이 비어 있음', true);
-	await page.click('nav a:has-text("일반 스터디")');
+	await page.click('nav.nav a:has-text("스터디")');
 	await page.waitForSelector('section[aria-label="오늘 할 일"]');
 	ok('시험을 지우면 오늘 할 일의 계획도 사라짐', (await page.locator('section[aria-label="오늘 할 일"] li:has-text("시험")').count()) === 0);
+
+
+	console.log('[수행평가]');
+	await page.click('nav.nav a:has-text("수행평가")');
+	await page.waitForSelector('h1:has-text("수행평가")');
+	await page.click('button:has-text("+ 수행평가 추가")');
+	await page.selectOption('#n-subject', { label: '통합사회' });
+	await page.selectOption('#n-kind', { label: '발표' });
+	await page.fill('#n-title', '모둠 발표');
+	await page.fill('#n-due', seoulYmd(10));
+	await page.fill('#n-max', '20');
+	await page.fill('#n-weight', '20');
+	await page.click('form button:has-text("수행평가 만들기")');
+	await page.waitForSelector('section[aria-label="예정"] a.card:has-text("모둠 발표")');
+	const card = await page.locator('section[aria-label="예정"] a.card:has-text("모둠 발표")').textContent();
+	ok('수행평가 등록 → 예정 칸에 표시 (D-10, 0/5 단계)', card.includes('D-10') && card.includes('0/5'), card);
+	await page.screenshot({ path: path.join(OUT, '13-assessments.png'), fullPage: true });
+
+	await page.click('a.card:has-text("모둠 발표")');
+	await page.waitForSelector('h1:has-text("모둠 발표")');
+	ok('기본 단계 5개 자동 생성', (await page.locator('ul.steps li').count()) === 5);
+	await page.locator('ul.steps li').first().locator('input[type=checkbox]').check();
+	await page.waitForSelector('text=1/5 완료');
+	await page.waitForSelector('text=상태: 진행중');
+	ok('첫 단계 완료 → 상태가 진행중으로', true);
+	await page.screenshot({ path: path.join(OUT, '14-assessment-detail.png'), fullPage: true });
+
+	await page.click('nav.nav a:has-text("스터디")');
+	await page.waitForSelector('section[aria-label="오늘 할 일"] li:has-text("모둠 발표 · ")');
+	ok('오늘 할 일에 수행평가 단계가 들어옴 (완료 표시)', await page.locator('section[aria-label="오늘 할 일"] li:has-text("모둠 발표 · ")').first().locator('input[type=checkbox]').isChecked());
+
+	await page.click('nav.nav a:has-text("홈")');
+	await page.waitForSelector('section[aria-label="마감 임박 수행평가"]');
+	ok('홈에 마감 임박 수행평가 표시', (await page.locator('section[aria-label="마감 임박 수행평가"]').textContent()).includes('모둠 발표'));
+
+	await page.click('nav.nav a:has-text("수행평가")');
+	await page.click('a.card:has-text("모둠 발표")');
+	await page.click('button:has-text("제출했어요")');
+	await page.waitForSelector('text=상태: 제출 완료');
+	await page.click('a:has-text("← 수행평가")');
+	await page.waitForSelector('section[aria-label="제출 · 채점 완료"] a.card:has-text("모둠 발표")');
+	ok('제출 → 완료 칸으로 이동', true);
+
+	await page.click('a.card:has-text("모둠 발표")');
+	await page.click('button:has-text("수행평가 삭제")');
+	await page.waitForURL(`${BASE}/assessments`);
+	await page.waitForSelector('.empty:has-text("등록된 수행평가가 없어요")');
+	ok('수행평가 삭제 → 목록이 비어 있음', true);
+	await page.click('nav.nav a:has-text("스터디")');
+	await page.waitForSelector('section[aria-label="오늘 할 일"]');
+	ok('삭제하면 오늘 할 일의 단계도 사라짐', (await page.locator('section[aria-label="오늘 할 일"] li:has-text("모둠 발표")').count()) === 0);
 
 	const realErrors = errors.filter((e) => !/favicon|fonts\.g|status of (401|409|422)/.test(e));
 	ok('콘솔 오류 없음', realErrors.length === 0, JSON.stringify(realErrors));

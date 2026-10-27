@@ -18,7 +18,7 @@ scripts/package.sh        # dist/ 와 dist/sp-deploy.zip 생성 (Node, npm 필�
 3. SSL(HTTPS)을 적용한다. 세션 쿠키가 HTTPS에서 `Secure`로 설정된다.
 
 ## 2. 데이터베이스
-phpMyAdmin → 내 DB 선택 → 가져오기 → `dist/schema.sql` 실행. 테이블 7개(`users`, `login_attempts`, `subjects`, `textbooks`, `units`, `materials`, `schema_migrations`)가 만들어진다.
+phpMyAdmin → 내 DB 선택 → 가져오기 → `dist/schema.sql` 실행. 테이블(사용자, 과목, 교재, 단원, 자료, 할 일, 복습, 시험, 수행평가 등)과 `schema_migrations`가 만들어진다. 이미 한 번 가져왔다면, 새로 생긴 `db/migrations/*.sql`만 phpMyAdmin에서 실행한다.
 
 ## 3. 파일 올리기 (FTP, 예: FileZilla)
 1. `dist/www_sp/` 안의 내용을 `www/sp/`에 올린다. (`.htaccess` 같은 점(.)으로 시작하는 파일도 함께 올라가야 한다. FTP 프로그램의 "숨김 파일 표시"를 켠다.)

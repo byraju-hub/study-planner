@@ -12,9 +12,10 @@
 
 	const items = [
 		{ href: '/', label: '홈', icon: 'M3 11l9-8 9 8M5 10v10h14V10' },
-		{ href: '/study', label: '일반 스터디', icon: 'M4 4h12a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3zM8 8h7' },
+		{ href: '/study', label: '스터디', icon: 'M4 4h12a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3zM8 8h7' },
 		{ href: '/exams', label: '시험 대비', icon: 'M3 5h18v16H3zM3 10h18M8 3v4M16 3v4' },
-		{ href: '/subjects', label: '과목 · 교재', icon: 'M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
+		{ href: '/assessments', label: '수행평가', icon: 'M5 4h14v17H5zM9 4h6v3H9zM9 12h6M9 16h4' },
+		{ href: '/subjects', label: '과목·교재', icon: 'M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
 		{ href: '/settings', label: '설정', icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14.2 3h-4.4l-.4 2.7a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.4 2.7h4.4l.4-2.7a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z' }
 	];
 
