@@ -6,6 +6,8 @@ declare(strict_types=1);
 //   SP_CONFIG=backend/config.test.php php -d upload_max_filesize=12M -d post_max_size=14M -S 127.0.0.1:8081 scripts/dev-router.php
 // 그다음: php backend/tests/api_test.php [http://127.0.0.1:8081]
 
+// 서버가 한국 시간(Asia/Seoul) 기준으로 날짜를 계산하므로 테스트도 같은 시간대를 쓴다.
+date_default_timezone_set('Asia/Seoul');
 $base = ($argv[1] ?? 'http://127.0.0.1:8081') . '/sp/api';
 $failures = 0;
 $checks = 0;
@@ -80,6 +82,14 @@ final class Client
         }
         $this->csrf = $r['data']['csrf'];
         return $r['data']['user'];
+    }
+}
+
+final class ReviewControllerDate
+{
+    public static function plus(string $date, int $days): string
+    {
+        return (new DateTimeImmutable($date))->modify("$days days")->format('Y-m-d');
     }
 }
 
@@ -280,6 +290,136 @@ check('과목 삭제 → 교재·파일 삭제', $s === 200 && $countFiles() ===
 check('삭제된 과목 → 404', $s === 404, $r);
 unlink($tmpPng);
 unlink($tmpTxt);
+
+echo "[할 일]\n";
+$c = new Client($base);
+$c->signup("u3$run");
+[, $r] = $c->call('GET', '/subjects');
+$sid = array_column($r['data'], 'id', 'name');
+$today = date('Y-m-d');
+
+[$s, $r] = $c->call('POST', '/tasks', ['title' => '수학 p.26–33', 'subject_id' => $sid['공통수학'], 'est_minutes' => 30]);
+check('할 일 추가 (날짜 기본값 = 오늘)', $s === 200 && $r['data']['task_date'] === $today && $r['data']['subject_name'] === '공통수학' && $r['data']['done'] === false, $r);
+$t1 = $r['data']['id'] ?? 0;
+[$s, $r] = $c->call('POST', '/tasks', ['title' => '날짜 오류', 'task_date' => '2026-13-45']);
+check('잘못된 날짜 → 422', $s === 422 && ($r['error']['field'] ?? '') === 'task_date', $r);
+[$s, $r] = $c->call('POST', '/tasks', ['title' => '남의 과목', 'subject_id' => $subId]);
+check('없는/남의 과목 → 404', $s === 404, $r);
+[$s, $r] = $c->call('POST', '/tasks', ['title' => '영단어', 'subject_id' => $sid['공통영어']]);
+$t2 = $r['data']['id'] ?? 0;
+[$s, $r] = $c->call('GET', '/tasks');
+check('오늘 할 일 목록 2개', $s === 200 && count($r['data']) === 2, $r);
+[$s, $r] = $c->call('POST', "/tasks/$t1/toggle");
+check('완료 토글', $s === 200 && $r['data']['done'] === true, $r);
+[$s, $r] = $c->call('GET', '/tasks');
+check('완료한 할 일은 뒤로 정렬', $r['data'][0]['id'] === $t2 && $r['data'][1]['id'] === $t1, $r);
+[$s, $r] = $c->call('POST', "/tasks/$t1/toggle", ['done' => false]);
+check('완료 취소', $r['data']['done'] === false, $r);
+[$s, $r] = $c->call('PUT', "/tasks/$t2", ['title' => '영단어 Day 12', 'task_date' => ReviewControllerDate::plus($today, 1), 'est_minutes' => null]);
+check('할 일 수정 (날짜 이동, 시간 비우기)', $s === 200 && $r['data']['title'] === '영단어 Day 12' && $r['data']['est_minutes'] === null, $r);
+[$s, $r] = $c->call('GET', '/tasks?from=' . $today . '&to=' . ReviewControllerDate::plus($today, 1));
+check('기간 조회 2개', count($r['data']) === 2, $r);
+[$s, $r] = $c->call('GET', '/tasks?from=2026-01-01&to=2026-12-31');
+check('62일 초과 기간 → 422', $s === 422, $r);
+[$s, $r] = $b->call('POST', "/tasks/$t1/toggle");
+check('남의 할 일 토글 → 404', $s === 404, $r);
+[$s, $r] = $b->call('DELETE', "/tasks/$t1");
+check('남의 할 일 삭제 → 404', $s === 404, $r);
+[$s, $r] = $c->call('DELETE', "/tasks/$t2");
+check('할 일 삭제', $s === 200, $r);
+
+echo "[시간표 · 당일 복습]\n";
+$monday = date('Y-m-d', strtotime('last monday'));
+$tuesday = ReviewControllerDate::plus($monday, 1);
+[$s, $r] = $c->call('PUT', '/timetable', ['slots' => [
+    ['weekday' => 1, 'period' => 1, 'subject_id' => $sid['공통국어']],
+    ['weekday' => 1, 'period' => 2, 'subject_id' => $sid['공통수학']],
+    ['weekday' => 2, 'period' => 1, 'subject_id' => null],
+]]);
+check('시간표 저장 (빈 칸 제외)', $s === 200 && count($r['data']['slots']) === 2, $r);
+[$s, $r] = $c->call('PUT', '/timetable', ['slots' => [['weekday' => 6, 'period' => 1, 'subject_id' => $sid['공통국어']]]]);
+check('토요일 시간표 → 422', $s === 422, $r);
+[$s, $r] = $c->call('PUT', '/timetable', ['slots' => [['weekday' => 1, 'period' => 1, 'subject_id' => $subId]]]);
+check('남의 과목으로 시간표 → 404', $s === 404, $r);
+[$s, $r] = $c->call('GET', '/timetable');
+check('실패한 저장은 시간표를 바꾸지 않음', count($r['data']['slots']) === 2, $r);
+
+[$s, $r] = $c->call('GET', "/study/today?date=$monday");
+check('월요일 오늘 수업 2개', $s === 200 && count($r['data']['lessons']) === 2 && $r['data']['lessons'][1]['subject_name'] === '공통수학' && $r['data']['lessons'][0]['done'] === false, $r);
+[$s, $r] = $c->call('GET', '/study/today?date=' . ReviewControllerDate::plus($monday, 5));
+check('토요일은 수업 없음', $r['data']['lessons'] === [], $r);
+
+[$s, $r] = $c->call('PUT', '/study/lessons', ['date' => $monday, 'period' => 5, 'done' => true]);
+check('시간표에 없는 교시 → 422', $s === 422, $r);
+[$s, $r] = $c->call('PUT', '/study/lessons', ['date' => $monday, 'period' => 2, 'topic' => '나머지정리', 'done' => true]);
+check('수업 복습 완료 → 1차 복습 등록', $s === 200 && $r['data']['done'] === true && $r['data']['review_item_id'] > 0, $r);
+$reviewId = $r['data']['review_item_id'] ?? 0;
+[$s, $r] = $c->call('GET', '/reviews?scope=due');
+$mine = array_values(array_filter($r['data'], fn($x) => $x['id'] === $reviewId));
+check('다음 날(화) 복습이 기한 도래 목록에 있음', count($mine) === 1 && $mine[0]['next_review_date'] === $tuesday && $mine[0]['stage'] === 1 && $mine[0]['interval_days'] === 1 && $mine[0]['title'] === '나머지정리' && $mine[0]['overdue_days'] >= 0, $r);
+
+[$s, $r] = $c->call('PUT', '/study/lessons', ['date' => $monday, 'period' => 2, 'topic' => '나머지정리', 'done' => true]);
+[$s, $r] = $c->call('GET', '/reviews?scope=due');
+check('같은 수업을 다시 저장해도 복습이 중복되지 않음', count(array_filter($r['data'], fn($x) => $x['title'] === '나머지정리')) === 1, $r);
+
+[$s, $r] = $c->call('PUT', '/study/lessons', ['date' => $monday, 'period' => 2, 'done' => false]);
+check('완료 취소', $s === 200 && $r['data']['done'] === false && $r['data']['review_item_id'] === null, $r);
+[$s, $r] = $c->call('GET', '/reviews?scope=due');
+check('복습한 적 없는 항목은 함께 삭제', count(array_filter($r['data'], fn($x) => $x['id'] === $reviewId)) === 0, $r);
+
+echo "[복습 주기]\n";
+[$s, $r] = $c->call('POST', '/reviews', ['title' => '이차방정식', 'subject_id' => $sid['공통수학']]);
+check('복습 직접 추가 (내일 1차)', $s === 200 && $r['data']['next_review_date'] === ReviewControllerDate::plus($today, 1) && $r['data']['stage'] === 1, $r);
+$rv = $r['data']['id'] ?? 0;
+$expected = [[2, 3], [3, 7], [4, 14], [5, 30]];
+foreach ($expected as [$stage, $days]) {
+    [$s, $r] = $c->call('POST', "/reviews/$rv/done");
+    check("복습 완료 → {$stage}차, {$days}일 뒤", $s === 200 && $r['data']['stage'] === $stage && $r['data']['next_review_date'] === ReviewControllerDate::plus($today, $days) && $r['data']['finished'] === false, $r);
+}
+[$s, $r] = $c->call('POST', "/reviews/$rv/done", ['hard' => true]);
+check('어려웠어요 → 단계 유지, 내일 다시', $r['data']['stage'] === 5 && $r['data']['next_review_date'] === ReviewControllerDate::plus($today, 1), $r);
+[$s, $r] = $c->call('POST', "/reviews/$rv/done");
+check('5차까지 마치면 종료', $s === 200 && $r['data']['finished'] === true && $r['data']['next_review_date'] === null, $r);
+[$s, $r] = $c->call('POST', "/reviews/$rv/done");
+check('종료된 항목 다시 완료 → 409', $s === 409, $r);
+[$s, $r] = $c->call('GET', '/reviews?scope=upcoming');
+check('종료된 항목은 예정 목록에 없음', count(array_filter($r['data'], fn($x) => $x['id'] === $rv)) === 0, $r);
+[$s, $r] = $c->call('POST', '/reviews', ['title' => '지울 복습']);
+$rv2 = $r['data']['id'];
+[$s, $r] = $b->call('POST', "/reviews/$rv2/done");
+check('남의 복습 완료 → 404', $s === 404, $r);
+[$s, $r] = $c->call('DELETE', "/reviews/$rv2");
+check('복습 삭제', $s === 200, $r);
+
+echo "[공부 타이머 · 회고]\n";
+[$s, $r] = $c->call('GET', '/sessions/active');
+check('진행 중인 타이머 없음', $s === 200 && $r['data']['session'] === null && !empty($r['data']['server_now']), $r);
+[$s, $r] = $c->call('POST', '/sessions', ['subject_id' => $sid['공통수학']]);
+check('타이머 시작', $s === 200 && $r['data']['session']['subject_name'] === '공통수학' && $r['data']['session']['ended_at'] === null, $r);
+$ses = $r['data']['session']['id'] ?? 0;
+[$s, $r] = $c->call('POST', '/sessions', []);
+check('이미 진행 중이면 409', $s === 409, $r);
+[$s, $r] = $c->call('GET', '/study/today');
+check('오늘 화면에 진행 중 타이머 포함', ($r['data']['session']['id'] ?? 0) === $ses, $r);
+[$s, $r] = $b->call('POST', "/sessions/$ses/stop");
+check('남의 타이머 정지 → 404', $s === 404, $r);
+[$s, $r] = $c->call('POST', "/sessions/$ses/stop");
+check('타이머 정지', $s === 200 && $r['data']['session']['ended_at'] !== null && $r['data']['session']['minutes'] === 0, $r);
+[$s, $r] = $c->call('POST', "/sessions/$ses/stop");
+check('이미 정지한 타이머 → 409', $s === 409, $r);
+[$s, $r] = $c->call('GET', '/stats/week');
+check('주간 통계 7일', $s === 200 && count($r['data']['days']) === 7 && $r['data']['days'][6]['date'] === $today, $r);
+
+[$s, $r] = $c->call('PUT', '/journal', ['date' => $today, 'good' => "수학 끝냄\n줄바꿈", 'bad' => '영어 못함', 'self_rating' => 4]);
+check('하루 회고 저장', $s === 200 && $r['data']['journal']['self_rating'] === 4, $r);
+[$s, $r] = $c->call('PUT', '/journal', ['date' => $today, 'good' => '수정', 'self_rating' => 9]);
+check('자기 평가 범위 오류 → 422', $s === 422, $r);
+[$s, $r] = $c->call('PUT', '/journal', ['date' => $today, 'good' => '수정됨', 'bad' => null, 'self_rating' => 5]);
+check('회고 덮어쓰기', $r['data']['journal']['good'] === '수정됨' && $r['data']['journal']['bad'] === null, $r);
+[$s, $r] = $c->call('GET', '/study/today');
+check('오늘 화면에 회고 포함', ($r['data']['journal']['self_rating'] ?? 0) === 5, $r);
+[$s, $r] = $b->call('GET', '/journal?date=' . $today);
+check('남의 회고는 보이지 않음', $r['data']['journal'] === null, $r);
 
 echo "\n" . ($failures === 0 ? "전체 통과 ($checks)" : "실패 $failures / $checks") . "\n";
 exit($failures === 0 ? 0 : 1);

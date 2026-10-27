@@ -67,6 +67,30 @@ final class Input
         return $v;
     }
 
+    /** YYYY-MM-DD. 없으면 $default(null이면 필수). */
+    public static function date(array $d, string $key, string $label, ?string $default = null): string
+    {
+        $v = $d[$key] ?? $default;
+        if ($v === null || $v === '') {
+            throw new HttpException(422, 'validation', "{$label}을(를) 입력해 주세요.", $key);
+        }
+        $dt = is_string($v) ? \DateTimeImmutable::createFromFormat('!Y-m-d', $v) : false;
+        if ($dt === false || $dt->format('Y-m-d') !== $v) {
+            throw new HttpException(422, 'validation', "{$label} 형식이 올바르지 않습니다. (예: 2026-10-27)", $key);
+        }
+        return $v;
+    }
+
+    /** 소유한 과목 id를 검증하고 돌려준다. null이면 null. */
+    public static function ownedSubject(array $d, string $key, int $userId, bool $required = false): ?int
+    {
+        $id = self::int($d, $key, 1, PHP_INT_MAX, '과목', $required);
+        if ($id !== null) {
+            Owned::find('subjects', $id, $userId);
+        }
+        return $id;
+    }
+
     public static function color(array $d, string $key, string $default): string
     {
         $v = $d[$key] ?? $default;

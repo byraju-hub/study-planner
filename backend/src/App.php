@@ -4,9 +4,15 @@ declare(strict_types=1);
 namespace App;
 
 use App\Controllers\AuthController;
+use App\Controllers\JournalController;
 use App\Controllers\MaterialController;
+use App\Controllers\ReviewController;
+use App\Controllers\SessionController;
+use App\Controllers\StudyController;
 use App\Controllers\SubjectController;
+use App\Controllers\TaskController;
 use App\Controllers\TextbookController;
+use App\Controllers\TimetableController;
 use App\Controllers\UnitController;
 use App\Core\Db;
 use App\Core\HttpException;
@@ -82,6 +88,31 @@ final class App
         $r->add('GET', '/materials/{id}/file', [MaterialController::class, 'file']);
         $r->add('PUT', '/materials/{id}', [MaterialController::class, 'update']);
         $r->add('DELETE', '/materials/{id}', [MaterialController::class, 'delete']);
+
+        $r->add('GET', '/tasks', [TaskController::class, 'list']);
+        $r->add('POST', '/tasks', [TaskController::class, 'create']);
+        $r->add('PUT', '/tasks/{id}', [TaskController::class, 'update']);
+        $r->add('POST', '/tasks/{id}/toggle', [TaskController::class, 'toggle']);
+        $r->add('DELETE', '/tasks/{id}', [TaskController::class, 'delete']);
+
+        $r->add('GET', '/timetable', [TimetableController::class, 'get']);
+        $r->add('PUT', '/timetable', [TimetableController::class, 'put']);
+
+        $r->add('GET', '/reviews', [ReviewController::class, 'list']);
+        $r->add('POST', '/reviews', [ReviewController::class, 'create']);
+        $r->add('POST', '/reviews/{id}/done', [ReviewController::class, 'done']);
+        $r->add('DELETE', '/reviews/{id}', [ReviewController::class, 'delete']);
+
+        $r->add('GET', '/study/today', [StudyController::class, 'today']);
+        $r->add('PUT', '/study/lessons', [StudyController::class, 'saveLesson']);
+
+        $r->add('GET', '/sessions/active', [SessionController::class, 'active']);
+        $r->add('POST', '/sessions', [SessionController::class, 'start']);
+        $r->add('POST', '/sessions/{id}/stop', [SessionController::class, 'stop']);
+        $r->add('GET', '/stats/week', [SessionController::class, 'week']);
+
+        $r->add('GET', '/journal', [JournalController::class, 'get']);
+        $r->add('PUT', '/journal', [JournalController::class, 'put']);
 
         return $r;
     }

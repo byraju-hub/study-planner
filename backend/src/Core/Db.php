@@ -53,6 +53,23 @@ final class Db
         return $st->rowCount();
     }
 
+    /** 콜백이 예외를 던지면 되돌린다. */
+    public static function transaction(callable $fn): mixed
+    {
+        $pdo = self::pdo();
+        $pdo->beginTransaction();
+        try {
+            $result = $fn();
+            $pdo->commit();
+            return $result;
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
     public static function insert(string $sql, array $params = []): int
     {
         self::run($sql, $params);
