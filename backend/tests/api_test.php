@@ -9,6 +9,16 @@ declare(strict_types=1);
 // 서버가 한국 시간(Asia/Seoul) 기준으로 날짜를 계산하므로 테스트도 같은 시간대를 쓴다.
 date_default_timezone_set('Asia/Seoul');
 $base = ($argv[1] ?? 'http://127.0.0.1:8081') . '/sp/api';
+
+// 로그인 실패 제한(IP·아이디별)이 여러 번 돌린 테스트의 기록 때문에 걸리지 않도록, 테스트 DB의 기록을 비운다.
+$testConfig = __DIR__ . '/../config.test.php';
+if (is_file($testConfig)) {
+    $db = (require $testConfig)['db'];
+    if (str_ends_with($db['name'], '_test')) {
+        $pdo = new PDO("mysql:host={$db['host']};port=" . ($db['port'] ?? 3306) . ";dbname={$db['name']};charset=utf8mb4", $db['user'], $db['pass']);
+        $pdo->exec('DELETE FROM login_attempts');
+    }
+}
 $failures = 0;
 $checks = 0;
 
@@ -420,6 +430,160 @@ check('회고 덮어쓰기', $r['data']['journal']['good'] === '수정됨' && $r
 check('오늘 화면에 회고 포함', ($r['data']['journal']['self_rating'] ?? 0) === 5, $r);
 [$s, $r] = $b->call('GET', '/journal?date=' . $today);
 check('남의 회고는 보이지 않음', $r['data']['journal'] === null, $r);
+
+echo "[시험]\n";
+$d14 = ReviewControllerDate::plus($today, 14);
+$d15 = ReviewControllerDate::plus($today, 15);
+$d17 = ReviewControllerDate::plus($today, 17);
+[$s, $r] = $c->call('POST', '/exams', ['type' => 'midterm', 'title' => '2학기 중간고사', 'start_date' => $d14, 'end_date' => $d17]);
+check('시험 등록 (D-14, 예정)', $s === 200 && $r['data']['d_day'] === 14 && $r['data']['status'] === 'upcoming' && $r['data']['subjects'] === [], $r);
+$exId = $r['data']['id'] ?? 0;
+[$s, $r] = $c->call('POST', '/exams', ['type' => 'final', 'title' => '날짜 거꾸로', 'start_date' => $d17, 'end_date' => $d14]);
+check('종료일이 시작일보다 앞 → 422', $s === 422 && ($r['error']['field'] ?? '') === 'end_date', $r);
+[$s, $r] = $c->call('POST', '/exams', ['type' => 'quiz', 'title' => '종류 오류', 'start_date' => $d14]);
+check('시험 종류 오류 → 422', $s === 422, $r);
+[$s, $r] = $c->call('POST', '/exams', ['type' => 'mock', 'title' => '10월 모의고사', 'start_date' => ReviewControllerDate::plus($today, -10)]);
+check('모의고사는 종료일 생략 가능 → 하루짜리, 지난 시험은 완료', $s === 200 && $r['data']['end_date'] === $r['data']['start_date'] && $r['data']['status'] === 'done' && $r['data']['d_day'] === -10, $r);
+$mockId = $r['data']['id'] ?? 0;
+[$s, $r] = $c->call('GET', '/exams');
+check('목록: 다가오는 시험이 먼저, 지난 시험은 뒤', $s === 200 && count($r['data']) === 2 && $r['data'][0]['id'] === $exId && $r['data'][1]['id'] === $mockId, $r);
+[$s, $r] = $c->call('GET', '/exams?type=mock');
+check('종류별 목록', count($r['data']) === 1 && $r['data'][0]['id'] === $mockId, $r);
+[$s, $r] = $b->call('GET', "/exams/$exId");
+check('남의 시험 조회 → 404', $s === 404, $r);
+[$s, $r] = $c->call('PUT', "/exams/$exId", ['title' => '2학기 중간고사(수정)', 'memo' => "범위 확인\n교과서 위주"]);
+check('시험 수정 (일부 필드만)', $s === 200 && $r['data']['title'] === '2학기 중간고사(수정)' && $r['data']['start_date'] === $d14 && str_contains($r['data']['memo'], "\n"), $r);
+
+echo "[시험 과목 · 범위]\n";
+[$s, $r] = $c->call('POST', "/exams/$exId/subjects", ['subject_id' => $sid['공통국어'], 'exam_date' => $d14, 'period' => 1, 'target_score' => 90]);
+check('시험 과목 추가', $s === 200 && count($r['data']['subjects']) === 1 && $r['data']['subjects'][0]['target_score'] === 90 && $r['data']['subjects'][0]['d_day'] === 14, $r);
+$esKor = $r['data']['subjects'][0]['id'] ?? 0;
+[$s, $r] = $c->call('POST', "/exams/$exId/subjects", ['subject_id' => $sid['공통수학'], 'exam_date' => $d15, 'period' => 2, 'target_grade' => 1]);
+$esMath = 0;
+foreach ($r['data']['subjects'] ?? [] as $x) {
+    if ($x['subject_name'] === '공통수학') {
+        $esMath = $x['id'];
+    }
+}
+check('두 번째 과목 (시험일순 정렬)', $s === 200 && count($r['data']['subjects']) === 2 && $r['data']['subjects'][1]['target_grade'] === 1, $r);
+[$s, $r] = $c->call('POST', "/exams/$exId/subjects", ['subject_id' => $sid['공통수학'], 'exam_date' => $d15]);
+check('같은 과목 중복 → 409', $s === 409, $r);
+[$s, $r] = $c->call('POST', "/exams/$exId/subjects", ['subject_id' => $sid['공통영어'], 'exam_date' => ReviewControllerDate::plus($today, 30)]);
+check('시험 기간 밖의 날짜 → 422', $s === 422 && ($r['error']['field'] ?? '') === 'exam_date', $r);
+[$s, $r] = $c->call('POST', "/exams/$exId/subjects", ['subject_id' => $sid['공통영어'], 'exam_date' => $d14, 'target_score' => 101]);
+check('목표 점수 범위 오류 → 422', $s === 422, $r);
+[$s, $r] = $c->call('POST', "/exams/$exId/subjects", ['subject_id' => $subId, 'exam_date' => $d14]);
+check('남의 과목 → 404', $s === 404, $r);
+
+[$s, $r] = $c->call('POST', "/exam-subjects/$esKor/scopes", ['label' => '문학 1~2단원', 'page_start' => 10, 'page_end' => 49]);
+check('범위 직접 입력 (40쪽)', $s === 200 && $r['data']['subjects'][0]['scopes'][0]['label'] === '문학 1~2단원', $r);
+[$s, $r] = $c->call('POST', "/exam-subjects/$esKor/scopes", ['label' => '쪽수 오류', 'page_start' => 50, 'page_end' => 10]);
+check('범위 쪽수 오류 → 422', $s === 422, $r);
+
+[$s, $r] = $c->call('POST', '/textbooks', ['subject_id' => $sid['공통수학'], 'title' => '수학 교과서']);
+$mathTb = $r['data']['id'];
+[$s, $r] = $c->call('POST', '/units', ['textbook_id' => $mathTb, 'title' => '1. 다항식', 'page_start' => 8, 'page_end' => 47]);
+$mu1 = $r['data']['id'];
+[$s, $r] = $c->call('POST', '/units', ['textbook_id' => $mathTb, 'title' => '2. 방정식', 'page_start' => 48, 'page_end' => 87]);
+$mu2 = $r['data']['id'];
+[$s, $r] = $c->call('POST', '/textbooks', ['subject_id' => $sid['공통국어'], 'title' => '국어 교과서']);
+[$s, $r] = $c->call('POST', '/units', ['textbook_id' => $r['data']['id'], 'title' => '국어 단원']);
+$korUnit = $r['data']['id'];
+
+[$s, $r] = $c->call('POST', "/exam-subjects/$esMath/scopes", ['unit_ids' => [$mu1, $mu2]]);
+$mathScopes = $r['data']['subjects'][1]['scopes'] ?? [];
+check('교재 단원을 시험 범위로 추가 (제목·쪽수 복사)', $s === 200 && count($mathScopes) === 2 && $mathScopes[0]['label'] === '1. 다항식' && $mathScopes[0]['page_end'] === 47 && $mathScopes[0]['unit_id'] === $mu1, $r);
+[$s, $r] = $c->call('POST', "/exam-subjects/$esMath/scopes", ['unit_ids' => [$mu1, $mu2]]);
+check('같은 단원을 다시 추가해도 중복되지 않음', $s === 200 && count($r['data']['subjects'][1]['scopes']) === 2, $r);
+[$s, $r] = $c->call('POST', "/exam-subjects/$esMath/scopes", ['unit_ids' => [$korUnit]]);
+check('다른 과목의 단원 → 422', $s === 422 && ($r['error']['field'] ?? '') === 'unit_ids', $r);
+[$s, $r] = $b->call('POST', "/exam-subjects/$esMath/scopes", ['label' => '해킹']);
+check('남의 시험 과목에 범위 추가 → 404', $s === 404, $r);
+
+$scopeId = $mathScopes[0]['id'] ?? 0;
+[$s, $r] = $c->call('PUT', "/exam-scopes/$scopeId", ['progress' => 60]);
+check('진도 갱신', $s === 200 && $r['data']['subjects'][1]['scopes'][0]['progress'] === 60, $r);
+check('과목 진도 = 범위 진도의 평균 (60, 0 → 30)', $r['data']['subjects'][1]['progress'] === 30, $r['data']['subjects'][1]['progress'] ?? null);
+[$s, $r] = $c->call('PUT', "/exam-scopes/$scopeId", ['progress' => 120]);
+check('진도 범위 오류 → 422', $s === 422, $r);
+
+echo "[대비 계획]\n";
+[$s, $r] = $c->call('POST', "/exams/$exId/plan/preview");
+$plan = $r['data'] ?? [];
+$okDates = $s === 200 && count($plan['items']) > 0;
+foreach ($plan['items'] ?? [] as $it) {
+    $examDate = $it['exam_subject_id'] === $esKor ? $d14 : $d15;
+    if ($it['task_date'] < $today || $it['task_date'] >= $examDate) {
+        $okDates = false;
+    }
+}
+check('미리보기: 오늘부터 시험 전날까지 날짜로 계획 생성', $okDates, $r);
+check('미리보기: 두 과목 모두 포함, 건너뛴 과목 없음', count(array_unique(array_column($plan['items'], 'exam_subject_id'))) === 2 && $plan['skipped'] === [], $plan['skipped'] ?? null);
+check('미리보기는 DB를 바꾸지 않음', count($c->call('GET', "/exams/$exId/tasks")[1]['data']) === 0);
+
+$items = array_map(fn($i) => ['exam_subject_id' => $i['exam_subject_id'], 'title' => $i['title'], 'task_date' => $i['task_date'], 'est_minutes' => $i['est_minutes']], $plan['items']);
+[$s, $r] = $c->call('POST', "/exams/$exId/plan/apply", ['items' => $items]);
+check('계획 확정 → 할 일 생성', $s === 200 && $r['data']['created'] === count($items) && $r['data']['kept_done'] === 0, $r);
+[$s, $r] = $c->call('GET', "/exams/$exId/tasks");
+check('시험 계획 할 일 목록 (출처 exam)', count($r['data']) === count($items) && $r['data'][0]['source'] === 'exam' && $r['data'][0]['subject_name'] !== null, $r);
+$firstTask = $r['data'][0]['id'];
+[$s, $r] = $c->call('GET', '/tasks');
+$todayExam = array_filter($r['data'], fn($t) => $t['source'] === 'exam');
+check('오늘 할 일에도 시험 계획이 보임', count($todayExam) >= 1, $r);
+[$s, $r] = $c->call('POST', "/tasks/$firstTask/toggle", ['done' => true]);
+[$s, $r] = $c->call('GET', "/exams/$exId");
+check('시험 과목별 계획 달성 수', array_sum(array_column($r['data']['subjects'], 'task_done')) === 1 && array_sum(array_column($r['data']['subjects'], 'task_total')) === count($items), $r['data']['subjects'] ?? null);
+
+$fewer = array_slice($items, 0, 3);
+[$s, $r] = $c->call('POST', "/exams/$exId/plan/apply", ['items' => $fewer]);
+check('다시 확정하면 미완료 계획만 교체, 완료한 할 일은 유지', $s === 200 && $r['data']['created'] === 3 && $r['data']['kept_done'] === 1, $r);
+[$s, $r] = $c->call('GET', "/exams/$exId/tasks");
+check('교체 후 할 일 = 완료 1 + 새 3', count($r['data']) === 4, count($r['data']));
+
+[$s, $r] = $c->call('POST', "/exams/$exId/plan/apply", ['items' => [['exam_subject_id' => $esKor, 'title' => '지난 날짜', 'task_date' => ReviewControllerDate::plus($today, -1)]]]);
+check('과거 날짜 계획 → 422', $s === 422, $r);
+[$s, $r] = $c->call('POST', "/exams/$exId/plan/apply", ['items' => [['exam_subject_id' => $esKor, 'title' => '시험 당일', 'task_date' => $d14]]]);
+check('시험 당일 계획 → 422', $s === 422, $r);
+[$s, $r] = $c->call('POST', "/exams/$exId/plan/apply", ['items' => [['exam_subject_id' => 999999, 'title' => '없는 과목', 'task_date' => $today]]]);
+check('이 시험에 없는 과목 → 422', $s === 422, $r);
+[$s, $r] = $b->call('POST', "/exams/$exId/plan/apply", ['items' => []]);
+check('남의 시험 계획 확정 → 404', $s === 404, $r);
+[$s, $r] = $b->call('POST', "/exams/$exId/plan/preview");
+check('남의 시험 계획 미리보기 → 404', $s === 404, $r);
+[$s, $r] = $c->call('POST', "/exams/$mockId/plan/preview");
+check('시험 과목이 없으면 미리보기 → 422', $s === 422, $r);
+
+echo "[결과 입력]\n";
+[$s, $r] = $c->call('POST', "/exams/$mockId/subjects", ['subject_id' => $sid['공통수학'], 'exam_date' => ReviewControllerDate::plus($today, -10), 'target_score' => 90]);
+$esMock = $r['data']['subjects'][0]['id'] ?? 0;
+[$s, $r] = $c->call('POST', "/exams/$mockId/plan/preview");
+check('지난 시험 과목은 계획에서 건너뜀 (이유 표시)', $s === 200 && $r['data']['items'] === [] && count($r['data']['skipped']) === 1, $r);
+[$s, $r] = $c->call('PUT', "/exam-subjects/$esMock", ['actual_score' => 101]);
+check('실제 점수 범위 오류 → 422', $s === 422, $r);
+[$s, $r] = $c->call('PUT', "/exam-subjects/$esMock", ['actual_score' => 88, 'actual_grade' => 2]);
+check('시험 결과 입력', $s === 200 && $r['data']['subjects'][0]['actual_score'] === 88 && $r['data']['subjects'][0]['target_score'] === 90, $r);
+[$s, $r] = $c->call('GET', '/exams/results?type=mock');
+check('모의고사 성적 목록', $s === 200 && count($r['data']) === 1 && $r['data'][0]['actual_grade'] === 2 && $r['data'][0]['subject_name'] === '공통수학', $r);
+[$s, $r] = $c->call('GET', '/exams/results?type=midterm');
+check('결과가 없는 종류는 빈 목록', $r['data'] === [], $r);
+[$s, $r] = $c->call('PUT', "/exam-subjects/$esMock", ['actual_score' => null, 'actual_grade' => null]);
+check('결과 지우기', $r['data']['subjects'][0]['actual_score'] === null && $r['data']['subjects'][0]['target_score'] === 90, $r);
+
+echo "[시험 삭제]\n";
+[$s, $r] = $c->call('DELETE', "/exam-scopes/$scopeId");
+check('범위 삭제', $s === 200 && count($r['data']['subjects'][1]['scopes']) === 1, $r);
+[$s, $r] = $c->call('DELETE', "/exam-subjects/$esKor");
+check('시험 과목 삭제', $s === 200 && count($r['data']['subjects']) === 1, $r);
+[$s, $r] = $c->call('GET', "/exams/$exId/tasks");
+check('시험 과목을 지우면 그 과목의 계획 할 일도 삭제', count(array_filter($r['data'], fn($t) => $t['subject_name'] === '공통국어')) === 0, $r);
+[$s, $r] = $b->call('DELETE', "/exams/$exId");
+check('남의 시험 삭제 → 404', $s === 404, $r);
+[$s, $r] = $c->call('DELETE', "/exams/$exId");
+check('시험 삭제', $s === 200, $r);
+[$s, $r] = $c->call('GET', '/tasks?from=' . $today . '&to=' . $d14);
+check('시험을 지우면 계획 할 일도 모두 삭제', count(array_filter($r['data'], fn($t) => $t['source'] === 'exam')) === 0, $r);
+[$s, $r] = $c->call('GET', "/exams/$exId");
+check('삭제된 시험 → 404', $s === 404, $r);
 
 echo "\n" . ($failures === 0 ? "전체 통과 ($checks)" : "실패 $failures / $checks") . "\n";
 exit($failures === 0 ? 0 : 1);

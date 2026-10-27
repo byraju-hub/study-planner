@@ -6,7 +6,7 @@ namespace App\Core;
 /** 로그인한 사용자 소유의 행만 꺼낸다. 남의 데이터나 없는 데이터는 모두 404. */
 final class Owned
 {
-    private const TABLES = ['subjects', 'textbooks', 'units', 'materials', 'tasks', 'review_items', 'study_sessions'];
+    private const TABLES = ['subjects', 'textbooks', 'units', 'materials', 'tasks', 'review_items', 'study_sessions', 'exams', 'exam_subjects', 'exam_scopes'];
 
     /** @return array<string,mixed> */
     public static function find(string $table, int $id, int $userId): array

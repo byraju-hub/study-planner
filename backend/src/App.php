@@ -4,6 +4,9 @@ declare(strict_types=1);
 namespace App;
 
 use App\Controllers\AuthController;
+use App\Controllers\ExamController;
+use App\Controllers\ExamPlanController;
+use App\Controllers\ExamSubjectController;
 use App\Controllers\JournalController;
 use App\Controllers\MaterialController;
 use App\Controllers\ReviewController;
@@ -113,6 +116,22 @@ final class App
 
         $r->add('GET', '/journal', [JournalController::class, 'get']);
         $r->add('PUT', '/journal', [JournalController::class, 'put']);
+
+        $r->add('GET', '/exams', [ExamController::class, 'list']);
+        $r->add('POST', '/exams', [ExamController::class, 'create']);
+        $r->add('GET', '/exams/results', [ExamController::class, 'results']);
+        $r->add('GET', '/exams/{id}', [ExamController::class, 'get']);
+        $r->add('PUT', '/exams/{id}', [ExamController::class, 'update']);
+        $r->add('DELETE', '/exams/{id}', [ExamController::class, 'delete']);
+        $r->add('POST', '/exams/{id}/subjects', [ExamSubjectController::class, 'add']);
+        $r->add('PUT', '/exam-subjects/{id}', [ExamSubjectController::class, 'update']);
+        $r->add('DELETE', '/exam-subjects/{id}', [ExamSubjectController::class, 'delete']);
+        $r->add('POST', '/exam-subjects/{id}/scopes', [ExamSubjectController::class, 'addScopes']);
+        $r->add('PUT', '/exam-scopes/{id}', [ExamSubjectController::class, 'updateScope']);
+        $r->add('DELETE', '/exam-scopes/{id}', [ExamSubjectController::class, 'deleteScope']);
+        $r->add('POST', '/exams/{id}/plan/preview', [ExamPlanController::class, 'preview']);
+        $r->add('POST', '/exams/{id}/plan/apply', [ExamPlanController::class, 'apply']);
+        $r->add('GET', '/exams/{id}/tasks', [ExamPlanController::class, 'tasks']);
 
         return $r;
     }
