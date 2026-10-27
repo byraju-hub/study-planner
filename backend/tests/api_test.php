@@ -585,5 +585,107 @@ check('시험을 지우면 계획 할 일도 모두 삭제', count(array_filter(
 [$s, $r] = $c->call('GET', "/exams/$exId");
 check('삭제된 시험 → 404', $s === 404, $r);
 
+echo "[수행평가]\n";
+$d10 = ReviewControllerDate::plus($today, 10);
+$assessTasks = static function (Client $cl, string $from, string $to): array {
+    [, $r] = $cl->call('GET', "/tasks?from=$from&to=$to");
+    return array_values(array_filter($r['data'], fn($t) => $t['source'] === 'assessment'));
+};
+[$s, $r] = $c->call('POST', '/assessments', ['subject_id' => $sid['통합사회'], 'title' => '모둠 발표', 'kind' => 'presentation', 'max_score' => 20, 'weight_pct' => 20, 'due_date' => $d10, 'rubric' => "발표 내용 10\n태도 10", 'auto_steps' => true]);
+check('수행평가 등록 + 기본 단계 자동 생성(발표 5단계)', $s === 200 && count($r['data']['steps']) === 5 && $r['data']['status'] === 'planned' && $r['data']['d_day'] === 10 && $r['data']['kind_label'] === '발표', $r);
+$asId = $r['data']['id'] ?? 0;
+$steps = $r['data']['steps'] ?? [];
+check('단계 목표일: 첫 단계 오늘, 마지막 단계 마감일', ($steps[0]['target_date'] ?? '') === $today && ($steps[4]['target_date'] ?? '') === $d10, array_column($steps, 'target_date'));
+check('단계마다 오늘 할 일(출처 assessment)이 생김', count($assessTasks($c, $today, $d10)) === 5);
+$firstTask = $assessTasks($c, $today, $today)[0] ?? [];
+check('할 일 제목 = 수행평가 · 단계, 과목 연결', ($firstTask['title'] ?? '') === '모둠 발표 · 주제 정하기' && ($firstTask['subject_name'] ?? '') === '통합사회', $firstTask);
+
+[$s, $r] = $c->call('POST', '/assessments', ['subject_id' => $sid['통합사회'], 'title' => '이름만', 'due_date' => 'abc']);
+check('마감일 형식 오류 → 422', $s === 422, $r);
+[$s, $r] = $c->call('POST', '/assessments', ['subject_id' => $sid['통합사회'], 'title' => '종류 오류', 'kind' => 'quiz', 'due_date' => $d10]);
+check('종류 오류 → 422', $s === 422, $r);
+[$s, $r] = $c->call('POST', '/assessments', ['subject_id' => $subId, 'title' => '남의 과목', 'due_date' => $d10]);
+check('남의 과목 → 404', $s === 404, $r);
+[$s, $r] = $c->call('POST', '/assessments', ['subject_id' => $sid['공통영어'], 'title' => '단계 없이', 'kind' => 'written', 'due_date' => ReviewControllerDate::plus($today, 20)]);
+check('자동 단계를 끄면 단계 없이 등록', $s === 200 && $r['data']['steps'] === [], $r);
+$asPlain = $r['data']['id'] ?? 0;
+
+[$s, $r] = $c->call('GET', '/assessments');
+$mine = array_values(array_filter($r['data'], fn($x) => $x['id'] === $asId))[0] ?? [];
+check('목록: 단계 진행·D-day', ($mine['step_total'] ?? 0) === 5 && ($mine['step_done'] ?? -1) === 0 && ($mine['d_day'] ?? 0) === 10 && array_key_exists('exam_warning', $mine) && $mine['exam_warning'] === null, $mine);
+check('목록은 마감 가까운 순', $r['data'][0]['id'] === $asId && $r['data'][1]['id'] === $asPlain, array_column($r['data'], 'id'));
+
+[$s, $r] = $c->call('PUT', "/assessments/$asId", ['max_score' => 10, 'score' => 15]);
+check('점수가 배점보다 크면 → 422', $s === 422 && ($r['error']['field'] ?? '') === 'score', $r);
+
+echo "[수행평가 단계 ↔ 할 일]\n";
+$s1 = $steps[0]['id'];
+$s2 = $steps[1]['id'];
+[$s, $r] = $c->call('POST', "/assessment-steps/$s1/toggle");
+check('단계 완료 → 상태 예정이 진행중으로', $s === 200 && $r['data']['status'] === 'in_progress' && $r['data']['steps'][0]['done'] === true, $r);
+check('연결된 할 일도 완료로', ($assessTasks($c, $today, $today)[0]['done'] ?? false) === true);
+$taskS2 = $assessTasks($c, ReviewControllerDate::plus($today, 1), $d10)[0];
+[$s, $r] = $c->call('POST', "/tasks/{$taskS2['id']}/toggle", ['done' => true]);
+[$s, $r] = $c->call('GET', "/assessments/$asId");
+$doneSteps = array_column(array_filter($r['data']['steps'], fn($x) => $x['done']), 'id');
+check('할 일에서 체크하면 단계도 완료', in_array($s2, $doneSteps, true) || count($doneSteps) === 2, $doneSteps);
+[$s, $r] = $c->call('POST', "/assessment-steps/$s1/toggle", ['done' => false]);
+check('단계 완료 취소 → 할 일도 미완료', $r['data']['steps'][0]['done'] === false && ($assessTasks($c, $today, $today)[0]['done'] ?? true) === false);
+
+$newDate = ReviewControllerDate::plus($today, 2);
+[$s, $r] = $c->call('PUT', "/assessment-steps/$s1", ['target_date' => $newDate, 'title' => '주제 확정']);
+$moved = array_values(array_filter($assessTasks($c, $newDate, $newDate), fn($t) => $t['title'] === '모둠 발표 · 주제 확정'));
+check('단계 목표일·이름을 바꾸면 할 일도 따라감', $s === 200 && count($moved) === 1, $r);
+[$s, $r] = $c->call('PUT', "/tasks/{$moved[0]['id']}", ['task_date' => ReviewControllerDate::plus($today, 3)]);
+[$s, $r] = $c->call('GET', "/assessments/$asId");
+check('할 일 날짜를 옮기면 단계 목표일도 따라감', $r['data']['steps'][0]['target_date'] === ReviewControllerDate::plus($today, 3), $r['data']['steps'][0]);
+[$s, $r] = $c->call('PUT', "/assessment-steps/$s1", ['target_date' => null]);
+check('목표일을 비우면 할 일이 사라짐 (단계는 유지)', $s === 200 && $r['data']['steps'][0]['target_date'] === null && count($assessTasks($c, $today, $d10)) === 4, count($assessTasks($c, $today, $d10)));
+[$s, $r] = $c->call('POST', "/assessments/$asId/steps", ['title' => '리허설', 'target_date' => ReviewControllerDate::plus($today, 8)]);
+check('단계 추가(목표일 있음) → 할 일 생성', $s === 200 && count($r['data']['steps']) === 6 && count($assessTasks($c, $today, $d10)) === 5, $r);
+$stepNew = end($r['data']['steps'])['id'];
+[$s, $r] = $c->call('DELETE', "/assessment-steps/$stepNew");
+check('단계 삭제 → 할 일도 삭제', $s === 200 && count($r['data']['steps']) === 5 && count($assessTasks($c, $today, $d10)) === 4, $r);
+$taskToDelete = $assessTasks($c, $today, $d10)[0];
+[$s, $r] = $c->call('DELETE', "/tasks/{$taskToDelete['id']}");
+[$s, $r] = $c->call('GET', "/assessments/$asId");
+check('할 일을 지우면 그 단계의 목표일도 비움', count(array_filter($r['data']['steps'], fn($x) => $x['target_date'] === null)) === 2, array_column($r['data']['steps'], 'target_date'));
+
+[$s, $r] = $c->call('PUT', "/assessments/$asId", ['title' => '모둠 발표(수정)']);
+check('수행평가 이름을 바꾸면 단계 할 일 제목도 바뀜', count(array_filter($assessTasks($c, $today, $d10), fn($t) => str_starts_with($t['title'], '모둠 발표(수정) · '))) === 3, array_column($assessTasks($c, $today, $d10), 'title'));
+
+[$s, $r] = $b->call('GET', "/assessments/$asId");
+check('남의 수행평가 조회 → 404', $s === 404, $r);
+[$s, $r] = $b->call('POST', "/assessment-steps/$s2/toggle");
+check('남의 단계 체크 → 404', $s === 404, $r);
+[$s, $r] = $b->call('PUT', "/assessments/$asId", ['title' => '해킹']);
+check('남의 수행평가 수정 → 404', $s === 404, $r);
+[$s, $r] = $b->call('DELETE', "/assessments/$asId");
+check('남의 수행평가 삭제 → 404', $s === 404, $r);
+
+echo "[수행평가 경고 · 점수 · 삭제]\n";
+[$s, $r] = $c->call('POST', '/exams', ['type' => 'midterm', 'title' => '곧 있을 중간고사', 'start_date' => ReviewControllerDate::plus($today, 12), 'end_date' => ReviewControllerDate::plus($today, 15)]);
+$exWarn = $r['data']['id'];
+[$s, $r] = $c->call('GET', "/assessments/$asId");
+check('마감이 시험 시작 7일 전 이내면 경고', is_string($r['data']['exam_warning']) && str_contains($r['data']['exam_warning'], '곧 있을 중간고사'), $r['data']['exam_warning'] ?? null);
+[$s, $r] = $c->call('GET', '/assessments');
+$plain = array_values(array_filter($r['data'], fn($x) => $x['id'] === $asPlain))[0];
+check('시험과 멀리 떨어진 마감은 경고 없음', $plain['exam_warning'] === null, $plain);
+[$s, $r] = $c->call('PUT', "/assessments/$asId", ['status' => 'submitted']);
+check('제출하면 경고 사라짐', $s === 200 && $r['data']['status'] === 'submitted' && $r['data']['exam_warning'] === null, $r);
+[$s, $r] = $c->call('PUT', "/assessments/$asId", ['status' => 'graded', 'max_score' => 20, 'score' => 17.5]);
+check('채점 완료 + 점수(소수 1자리)', $s === 200 && $r['data']['status'] === 'graded' && (float) $r['data']['score'] === 17.5, $r);
+[$s, $r] = $c->call('GET', '/assessments');
+check('완료된 수행평가는 목록 뒤쪽', end($r['data'])['id'] === $asId, array_column($r['data'], 'id'));
+[$s, $r] = $c->call('PUT', "/assessments/$asId", ['status' => 'done']);
+check('상태 값 오류 → 422', $s === 422, $r);
+$c->call('DELETE', "/exams/$exWarn");
+
+[$s, $r] = $c->call('DELETE', "/assessments/$asId");
+check('수행평가 삭제', $s === 200, $r);
+check('삭제하면 단계 할 일도 모두 사라짐', count($assessTasks($c, $today, $d10)) === 0, count($assessTasks($c, $today, $d10)));
+[$s, $r] = $c->call('GET', "/assessments/$asId");
+check('삭제된 수행평가 → 404', $s === 404, $r);
+
 echo "\n" . ($failures === 0 ? "전체 통과 ($checks)" : "실패 $failures / $checks") . "\n";
 exit($failures === 0 ? 0 : 1);

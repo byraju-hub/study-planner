@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App;
 
+use App\Controllers\AssessmentController;
 use App\Controllers\AuthController;
 use App\Controllers\ExamController;
 use App\Controllers\ExamPlanController;
@@ -132,6 +133,16 @@ final class App
         $r->add('POST', '/exams/{id}/plan/preview', [ExamPlanController::class, 'preview']);
         $r->add('POST', '/exams/{id}/plan/apply', [ExamPlanController::class, 'apply']);
         $r->add('GET', '/exams/{id}/tasks', [ExamPlanController::class, 'tasks']);
+
+        $r->add('GET', '/assessments', [AssessmentController::class, 'list']);
+        $r->add('POST', '/assessments', [AssessmentController::class, 'create']);
+        $r->add('GET', '/assessments/{id}', [AssessmentController::class, 'get']);
+        $r->add('PUT', '/assessments/{id}', [AssessmentController::class, 'update']);
+        $r->add('DELETE', '/assessments/{id}', [AssessmentController::class, 'delete']);
+        $r->add('POST', '/assessments/{id}/steps', [AssessmentController::class, 'addStep']);
+        $r->add('PUT', '/assessment-steps/{id}', [AssessmentController::class, 'updateStep']);
+        $r->add('POST', '/assessment-steps/{id}/toggle', [AssessmentController::class, 'toggleStep']);
+        $r->add('DELETE', '/assessment-steps/{id}', [AssessmentController::class, 'deleteStep']);
 
         return $r;
     }

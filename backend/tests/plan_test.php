@@ -123,5 +123,30 @@ usort($sorted, fn($a, $b) => [$a['task_date'], $a['exam_subject_id']] <=> [$b['t
 check('결과는 날짜순, 같은 날은 과목순', $sorted === $r['items']);
 check('빈 입력', PlanService::generate([], '2026-10-27') === ['items' => [], 'skipped' => []]);
 
+echo "[수행평가 기본 단계]\n";
+use App\Services\AssessmentPlan;
+
+$steps = AssessmentPlan::steps('report', '2026-10-27', '2026-11-06');
+check('보고서: 5단계, 첫 단계는 오늘 / 마지막 단계는 마감일', count($steps) === 5 && $steps[0]['target_date'] === '2026-10-27' && $steps[4]['target_date'] === '2026-11-06', $steps);
+check('날짜가 고르게 늘어남 (0·3·5·8·10일)', array_column($steps, 'target_date') === ['2026-10-27', '2026-10-30', '2026-11-01', '2026-11-04', '2026-11-06'], array_column($steps, 'target_date'));
+$steps = AssessmentPlan::steps('presentation', '2026-10-27', '2026-10-27');
+check('마감이 오늘이면 모든 단계가 오늘', array_unique(array_column($steps, 'target_date')) === ['2026-10-27'], $steps);
+$steps = AssessmentPlan::steps('written', '2026-10-27', '2026-10-01');
+check('마감이 지났으면 모든 단계가 마감일', array_unique(array_column($steps, 'target_date')) === ['2026-10-01'] && count($steps) === 4, $steps);
+$steps = AssessmentPlan::steps('experiment', '2026-10-27', '2026-10-28');
+check('마감이 내일: 날짜는 오늘~내일, 마지막은 마감일', $steps[0]['target_date'] === '2026-10-27' && $steps[4]['target_date'] === '2026-10-28', array_column($steps, 'target_date'));
+check('알 수 없는 종류는 기타(3단계)', count(AssessmentPlan::steps('zzz', '2026-10-27', '2026-11-06')) === 3);
+$allKinds = true;
+foreach (array_keys(AssessmentPlan::KINDS) as $k) {
+    $st = AssessmentPlan::steps($k, '2026-10-27', '2026-12-01');
+    $dates = array_column($st, 'target_date');
+    $sorted = $dates;
+    sort($sorted);
+    if (count($st) < 3 || $dates !== $sorted || end($dates) !== '2026-12-01' || $dates[0] !== '2026-10-27') {
+        $allKinds = false;
+    }
+}
+check('모든 종류: 3단계 이상, 날짜 오름차순, 오늘~마감일', $allKinds);
+
 echo "\n" . ($fail === 0 ? "전체 통과 ($n)" : "실패 $fail / $n") . "\n";
 exit($fail === 0 ? 0 : 1);

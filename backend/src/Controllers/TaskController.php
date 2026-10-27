@@ -61,6 +61,9 @@ final class TaskController
             'UPDATE tasks SET title = ?, task_date = ?, subject_id = ?, est_minutes = ? WHERE id = ? AND user_id = ?',
             [$title, $date, $subjectId, $minutes, $row['id'], $uid]
         );
+        if ($row['source'] === 'assessment' && $date !== $row['task_date']) {
+            AssessmentController::onTaskMoved($uid, $row, $date);
+        }
         return self::one($uid, (int) $row['id']);
     }
 
@@ -71,13 +74,19 @@ final class TaskController
         $row = Owned::find('tasks', $p['id'], $uid);
         $done = array_key_exists('done', $req->body) ? (bool) $req->body['done'] : $row['done_at'] === null;
         Db::run('UPDATE tasks SET done_at = ' . ($done ? 'NOW()' : 'NULL') . ' WHERE id = ? AND user_id = ?', [$row['id'], $uid]);
+        if ($row['source'] === 'assessment') {
+            AssessmentController::onTaskToggled($uid, $row, $done);
+        }
         return self::one($uid, (int) $row['id']);
     }
 
     public static function delete(Request $req, array $p): array
     {
         $uid = Session::requireUser();
-        Owned::find('tasks', $p['id'], $uid);
+        $row = Owned::find('tasks', $p['id'], $uid);
+        if ($row['source'] === 'assessment') {
+            AssessmentController::onTaskDeleted($uid, $row);
+        }
         Db::run('DELETE FROM tasks WHERE id = ? AND user_id = ?', [$p['id'], $uid]);
         return ['deleted' => true];
     }

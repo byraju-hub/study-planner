@@ -6,7 +6,7 @@ namespace App\Core;
 /** 로그인한 사용자 소유의 행만 꺼낸다. 남의 데이터나 없는 데이터는 모두 404. */
 final class Owned
 {
-    private const TABLES = ['subjects', 'textbooks', 'units', 'materials', 'tasks', 'review_items', 'study_sessions', 'exams', 'exam_subjects', 'exam_scopes'];
+    private const TABLES = ['subjects', 'textbooks', 'units', 'materials', 'tasks', 'review_items', 'study_sessions', 'exams', 'exam_subjects', 'exam_scopes', 'assessments'];
 
     /** @return array<string,mixed> */
     public static function find(string $table, int $id, int $userId): array
@@ -17,6 +17,16 @@ final class Owned
         $row = Db::one("SELECT * FROM `$table` WHERE id = ? AND user_id = ?", [$id, $userId]);
         if ($row === null) {
             throw new HttpException(404, 'not_found', '찾을 수 없는 항목입니다.');
+        }
+        return $row;
+    }
+
+    /** @return array<string,mixed> */
+    public static function findStep(int $id, int $userId): array
+    {
+        $row = Db::one('SELECT * FROM assessment_steps WHERE id = ? AND user_id = ?', [$id, $userId]);
+        if ($row === null) {
+            throw new HttpException(404, 'not_found', '찾을 수 없는 단계입니다.');
         }
         return $row;
     }
