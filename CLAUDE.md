@@ -3,7 +3,7 @@
 고등학교 1학년 학생용 스터디 플래너. 설계는 `docs/ARCHITECTURE.md`, 진행 상황은 `docs/PROGRESS.md`를 먼저 읽는다.
 
 ## 기술 스택
-- 화면: Svelte 5 + SvelteKit (`adapter-static`, SPA 모드, `paths.base = '/sp'`)
+- 화면: Svelte 5 + SvelteKit 3 (`adapter-static`, SPA 모드, `paths.base = '/sp'`)
 - 서버: PHP 8.4 (JSON API 전용, 프레임워크 없음), MariaDB
 - 배포: Cafe24 웹호스팅 `/sp` 폴더 (Node 서버 없음, 정적 파일 + PHP)
 
@@ -25,20 +25,33 @@
 - 업로드 자료는 본인만 볼 수 있다. 공유 기능은 만들지 않는다 (`docs/ARCHITECTURE.md` 9-1 참고).
 - 코드 주석은 최소한으로, 이유가 분명하지 않은 곳에만 쓴다.
 
+## SvelteKit 3 주의 (설치된 버전이 예전 문서와 다르다)
+- 설정은 `svelte.config.js`가 아니라 `frontend/vite.config.js`의 `sveltekit({...})` 안에 둔다. (어댑터, `paths.base = '/sp'`)
+- `$lib`는 없어졌다. `package.json`의 `imports`로 `#lib/...`를 쓴다.
+- `$app/paths`의 `base`는 없어졌다. 주소는 `resolve('/subjects')`, 동적 경로는 `resolve('/subjects/[id]', { id })`.
+- 화면은 SPA(`ssr = false`)라서 데이터는 모두 `frontend/src/lib/api.js`로 PHP API에서 받는다.
+
 ## 명령어
 ```
-# DB 마이그레이션
-php scripts/migrate.php
+# 로컬 DB (MariaDB). backend/config.php(개발)와 backend/config.test.php(테스트)는 git에 올리지 않는다.
+#   config.example.php를 복사해서 만든다. 개발 DB: sp_dev, 테스트 DB: sp_test
+php scripts/migrate.php                                  # 개발 DB
+SP_CONFIG=backend/config.test.php php scripts/migrate.php  # 테스트 DB
 
 # 로컬 개발 서버 (정적 화면 + API, http://127.0.0.1:8080/sp/)
-php -S 127.0.0.1:8080 scripts/dev-router.php
+php -d upload_max_filesize=12M -d post_max_size=14M -S 127.0.0.1:8080 scripts/dev-router.php
 
 # 화면
-cd frontend && npm install && npm run dev      # 개발 (API는 8080으로 프록시)
-cd frontend && npm run build                   # frontend/build 생성
+cd frontend && npm install
+npm run build        # frontend/build 생성 (dev-router가 이 폴더를 /sp/ 로 서빙)
+npm run dev          # Vite 개발 서버 (API는 8080으로 프록시)
 
-# 백엔드 API 테스트 (서버가 떠 있어야 함)
+# 백엔드 API 테스트: 테스트 DB를 쓰는 서버를 8081에 따로 띄운다
+SP_CONFIG=$PWD/backend/config.test.php php -d upload_max_filesize=12M -d post_max_size=14M -S 127.0.0.1:8081 scripts/dev-router.php &
 php backend/tests/api_test.php
+
+# 브라우저 통합 테스트 (8080 서버 + 빌드 필요, Playwright 필요)
+node scripts/e2e.cjs
 ```
 
 ## 작업 방식
