@@ -163,6 +163,85 @@ function ok(label, cond, extra = '') {
 	await page.waitForSelector('h1:has-text("안녕하세요, 서연님")');
 	ok('새로고침 후에도 로그인 유지', true);
 
+
+	console.log('[일반 스터디]');
+	const seoulDay = new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul', weekday: 'short' });
+	const isWeekday = !['Sat', 'Sun'].includes(seoulDay);
+	await page.click('nav a:has-text("일반 스터디")');
+	await page.waitForSelector('h1:has-text("일반 스터디")');
+	await page.click('a:has-text("시간표 설정")');
+	await page.waitForSelector('h1:has-text("시간표")');
+	for (let d = 1; d <= 5; d++) {
+		await page.selectOption(`#c-${d}-1`, { label: '공통국어' });
+		await page.selectOption(`#c-${d}-2`, { label: '공통수학' });
+	}
+	await page.click('button:has-text("시간표 저장")');
+	await page.waitForSelector('.chip:has-text("시간표를 저장했어요")');
+	ok('시간표 저장', true);
+	await page.screenshot({ path: path.join(OUT, '07-timetable.png') });
+
+	await page.click('a:has-text("일반 스터디")');
+	await page.waitForSelector('section[aria-label="오늘 수업 복습"]');
+	if (isWeekday) {
+		ok('오늘 수업 2개 표시', (await page.locator('section[aria-label="오늘 수업 복습"] li').count()) === 2);
+		await page.fill('#topic-2', '나머지정리');
+		await page.getByLabel('2교시 공통수학 복습 완료').check();
+		await page.waitForSelector('section[aria-label="오늘 수업 복습"] li:has-text("복습 완료")');
+		ok('수업 복습 완료 표시', true);
+	} else {
+		ok('주말: 수업 없음 안내', (await page.locator('section[aria-label="오늘 수업 복습"] .empty').count()) === 1);
+	}
+
+	await page.fill('#task-title', '수학 문제집 풀기');
+	await page.selectOption('#task-subject', { label: '공통수학' });
+	await page.fill('#task-min', '30');
+	await page.click('section[aria-label="오늘 할 일"] button:has-text("추가")');
+	await page.waitForSelector('section[aria-label="오늘 할 일"] li:has-text("수학 문제집 풀기")');
+	ok('할 일 추가', true);
+	await page.getByLabel('수학 문제집 풀기', { exact: true }).check();
+	await page.waitForSelector('section[aria-label="오늘 할 일"] h2:has-text("1/1")');
+	ok('할 일 완료 → 1/1', true);
+
+	await page.fill('#rv-title', '이차방정식');
+	await page.click('section[aria-label="복습"] button:has-text("추가")');
+	await page.waitForSelector('.chip:has-text("내일 1차 복습으로 등록했어요")');
+	ok('복습 직접 추가 (내일 1차)', true);
+
+	const clock = page.locator('output.clock');
+	ok('타이머 대기 상태 00:00:00', (await clock.textContent()) === '00:00:00');
+	await page.selectOption('#timer-subject', { label: '공통수학' });
+	await page.click('section[aria-label="공부 타이머"] button:has-text("시작")');
+	await page.waitForSelector('section[aria-label="공부 타이머"] button:has-text("정지")');
+	await page.waitForTimeout(2300);
+	const running = await clock.textContent();
+	ok('타이머가 흐름', running !== '00:00:00', running);
+	await page.reload();
+	await page.waitForSelector('section[aria-label="공부 타이머"] button:has-text("정지")');
+	ok('새로고침해도 타이머 유지', (await clock.textContent()) !== '00:00:00');
+	await page.click('section[aria-label="공부 타이머"] button:has-text("정지")');
+	await page.waitForSelector('section[aria-label="공부 타이머"] button:has-text("시작")');
+	ok('타이머 정지', true);
+
+	await page.fill('#j-good', '수학 문제집 풀었다');
+	await page.fill('#j-bad', '영어를 못했다');
+	await page.locator('label.star:has-text("4")').click();
+	await page.click('form[aria-label="하루 회고"] button:has-text("회고 저장")');
+	await page.waitForSelector('.chip:has-text("저장했어요")');
+	ok('하루 회고 저장', true);
+	await page.reload();
+	await page.waitForSelector('#j-good');
+	ok('새로고침 후 회고 유지', (await page.inputValue('#j-good')) === '수학 문제집 풀었다');
+	ok('새로고침 후 할 일 완료 유지', await page.getByLabel('수학 문제집 풀기', { exact: true }).isChecked());
+	await page.screenshot({ path: path.join(OUT, '08-study.png'), fullPage: true });
+
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.screenshot({ path: path.join(OUT, '09-study-mobile.png'), fullPage: true });
+	await page.setViewportSize({ width: 1440, height: 900 });
+
+	await page.click('nav a:has-text("홈")');
+	await page.waitForSelector('a.today');
+	ok('홈에 오늘 요약 표시', (await page.locator('a.today').textContent()).includes('1/1'));
+
 	const realErrors = errors.filter((e) => !/favicon|fonts\.g|status of (401|409|422)/.test(e));
 	ok('콘솔 오류 없음', realErrors.length === 0, JSON.stringify(realErrors));
 
