@@ -31,8 +31,17 @@ EOF
 
 cp -R "$root/backend/src" "$out/sp_private/src"
 cp "$root/backend/config.example.php" "$out/sp_private/config.example.php"
-printf 'Require all denied\n' > "$out/sp_private/uploads/.htaccess"
-printf 'Require all denied\n' > "$out/sp_private/.htaccess"
+# 웹 접근 차단 (Apache 2.4/2.2 모두). sp_private 를 www 안에 두게 되더라도 외부에서 열 수 없게 한다.
+cat > "$out/sp_private/.htaccess" <<'EOF'
+<IfModule mod_authz_core.c>
+	Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+	Order allow,deny
+	Deny from all
+</IfModule>
+EOF
+cp "$out/sp_private/.htaccess" "$out/sp_private/uploads/.htaccess"
 
 {
 	echo "-- Cafe24 phpMyAdmin 가져오기용. 사용할 데이터베이스를 선택한 뒤 실행한다."
