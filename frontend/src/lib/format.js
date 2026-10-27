@@ -29,3 +29,16 @@ export function weekdayLabel(ymd) {
 export function chipStyle(color) {
 	return `color:${color};background:color-mix(in srgb, ${color} 14%, white);`;
 }
+
+/** "2026-11-09" → "11/9(월)" */
+export function fmtMD(ymd) {
+	const [y, m, d] = ymd.split('-').map(Number);
+	return `${m}/${d}(${'일월화수목금토'[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]})`;
+}
+
+/** 남은 일수 → "D-14" / "D-day" / "D+3" */
+export function fmtDday(n) {
+	return n === 0 ? 'D-day' : n > 0 ? `D-${n}` : `D+${-n}`;
+}
+
+export const EXAM_TYPES = { midterm: '중간고사', final: '기말고사', mock: '모의고사' };

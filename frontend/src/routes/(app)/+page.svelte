@@ -4,20 +4,22 @@
 	import { auth } from '#lib/auth.svelte.js';
 	import { get } from '#lib/api.js';
 
-	import { fmtDate, fmtMinutes } from '#lib/format.js';
+	import { fmtDate, fmtDday, fmtMD, fmtMinutes } from '#lib/format.js';
 
 	let subjects = $state([]);
 	let study = $state(null);
+	let exams = $state([]);
 	let error = $state('');
 
 	onMount(async () => {
 		try {
-			[subjects, study] = await Promise.all([get('/subjects'), get('/study/today')]);
+			[subjects, study, exams] = await Promise.all([get('/subjects'), get('/study/today'), get('/exams')]);
 		} catch (e) {
 			error = e.message;
 		}
 	});
 
+	const nextExam = $derived(exams.find((e) => e.status !== 'done') ?? null);
 	const doneTasks = $derived(study ? study.tasks.filter((t) => t.done).length : 0);
 </script>
 
@@ -30,6 +32,17 @@
 	</header>
 
 	{#if error}<p class="alert">{error}</p>{/if}
+
+	{#if nextExam}
+		<a class="exam card" href={resolve('/exams/[id]', { id: String(nextExam.id) })}>
+			<div class="grow stack" style="gap: 4px;">
+				<span class="small">{nextExam.title} · {fmtMD(nextExam.start_date)} 시작</span>
+				<div class="bar" role="progressbar" aria-valuenow={nextExam.progress ?? 0} aria-valuemin="0" aria-valuemax="100" aria-label="범위 진도"><span style:width="{nextExam.progress ?? 0}%"></span></div>
+				<span class="small">과목 {nextExam.subject_count}개 · 범위 진도 {nextExam.progress ?? 0}%</span>
+			</div>
+			<strong class="dday">{nextExam.status === 'ongoing' ? '시험 중' : fmtDday(nextExam.d_day)}</strong>
+		</a>
+	{/if}
 
 	{#if study}
 		<a class="today card" href={resolve('/study')}>
@@ -69,6 +82,29 @@
 </div>
 
 <style>
+	.exam {
+		display: flex;
+		align-items: center;
+		gap: 20px;
+		text-decoration: none;
+		color: #173f2e;
+		background: var(--accent-soft);
+		border-color: transparent;
+	}
+	.exam .dday {
+		font-size: 34px;
+	}
+	.bar {
+		height: 8px;
+		border-radius: 4px;
+		background: rgba(255, 255, 255, 0.8);
+	}
+	.bar span {
+		display: block;
+		height: 8px;
+		border-radius: 4px;
+		background: var(--accent);
+	}
 	.today {
 		display: flex;
 		align-items: center;

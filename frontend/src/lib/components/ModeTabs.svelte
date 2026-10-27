@@ -4,7 +4,10 @@
 	/** 3개 모드를 오가는 칩. 아직 없는 모드는 목록에 넣지 않는다. */
 	let { current } = $props();
 
-	const modes = [{ id: 'study', href: '/study', label: '일반 스터디' }];
+	const modes = [
+		{ id: 'study', href: '/study', label: '일반 스터디' },
+		{ id: 'exam', href: '/exams', label: '시험 대비' }
+	];
 </script>
 
 <nav class="modes" aria-label="모드">

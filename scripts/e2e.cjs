@@ -242,6 +242,101 @@ function ok(label, cond, extra = '') {
 	await page.waitForSelector('a.today');
 	ok('홈에 오늘 요약 표시', (await page.locator('a.today').textContent()).includes('1/1'));
 
+
+	console.log('[시험 대비]');
+	const seoulYmd = (plusDays) => {
+		const [y, m, d] = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }).split('-').map(Number);
+		return new Date(Date.UTC(y, m - 1, d + plusDays)).toISOString().slice(0, 10);
+	};
+	await page.click('nav a:has-text("시험 대비")');
+	await page.waitForSelector('h1:has-text("시험 대비")');
+	await page.click('button:has-text("+ 시험 추가")');
+	await page.fill('#x-title', '2학기 중간고사');
+	await page.fill('#x-start', seoulYmd(14));
+	await page.fill('#x-end', seoulYmd(17));
+	await page.click('form button:has-text("시험 만들기")');
+	await page.waitForSelector('a.card.item:has-text("2학기 중간고사")');
+	ok('시험 등록 → 목록에 표시 (D-14)', (await page.locator('a.hero').textContent()).includes('D-14'));
+	await page.click('a.card.item:has-text("2학기 중간고사")');
+	await page.waitForSelector('h1:has-text("2학기 중간고사")');
+
+	await page.click('button:has-text("+ 과목 추가")');
+	await page.selectOption('#a-subject', { label: '공통수학' });
+	await page.fill('#a-period', '2');
+	await page.fill('#a-ts', '90');
+	await page.click('form button:has-text("과목 추가")');
+	await page.waitForSelector('section[aria-label="공통수학 시험"]');
+	ok('시험 과목 추가', true);
+	await page.click('button:has-text("+ 과목 추가")');
+	await page.selectOption('#a-subject', { label: '공통국어' });
+	await page.fill('#a-date', seoulYmd(15));
+	await page.click('form button:has-text("과목 추가")');
+	await page.waitForSelector('section[aria-label="공통국어 시험"]');
+	ok('두 번째 과목 (다른 시험일)', true);
+
+	const math = page.locator('section[aria-label="공통수학 시험"]');
+	await math.locator('button:has-text("교재에서 고르기")').click();
+	await math.locator('label.unit:has-text("1. 다항식") input').check();
+	await math.locator('button:has-text("선택한 단원 1개 추가")').click();
+	await math.locator('li.scope:has-text("1. 다항식")').waitFor();
+	ok('교재 단원을 시험 범위로 추가', true);
+	await math.locator('input[type=range]').fill('60');
+	await math.locator('.pct:has-text("60%")').waitFor();
+	ok('범위 진도 60% 저장', true);
+
+	const kor = page.locator('section[aria-label="공통국어 시험"]');
+	await kor.locator('button:has-text("직접 입력")').click();
+	await kor.locator('input[id^="sc-label"]').fill('문학 1~2단원');
+	await kor.locator('input[id^="sc-s"]').fill('10');
+	await kor.locator('input[id^="sc-e"]').fill('49');
+	await kor.locator('button:has-text("범위 추가")').click();
+	await kor.locator('li.scope:has-text("문학 1~2단원")').waitFor();
+	ok('범위 직접 입력', true);
+
+	await page.click('button:has-text("계획 만들기")');
+	await page.waitForSelector('[aria-label="계획 미리보기"]');
+	const previewCount = await page.locator('[aria-label="계획 미리보기"] .item').count();
+	ok('대비 계획 미리보기 생성', previewCount >= 20, `items=${previewCount}`);
+	await page.screenshot({ path: path.join(OUT, '10-exam-preview.png'), fullPage: true });
+	await page.locator('[aria-label="계획 미리보기"] .item button:has-text("빼기")').first().click();
+	ok('미리보기에서 항목 빼기', (await page.locator('[aria-label="계획 미리보기"] .item').count()) === previewCount - 1);
+	await page.click('button:has-text("이대로 확정")');
+	await page.waitForSelector('.chip:has-text("할 일")');
+	await page.waitForSelector('[aria-label="확정된 계획"]');
+	const confirmed = await page.locator('[aria-label="확정된 계획"] label.check').count();
+	ok('계획 확정 → 할 일 생성', confirmed === previewCount - 1, `confirmed=${confirmed}`);
+	await page.locator('[aria-label="확정된 계획"] label.check input').first().check();
+	await page.waitForSelector('[aria-label="확정된 계획"] :text("1/' + confirmed + ' 완료")');
+	ok('계획 항목 완료 체크 → 달성 수 갱신', true);
+
+	await page.locator('section[aria-label="공통수학 시험"] input[id^="ra-"]').fill('85');
+	await page.locator('section[aria-label="공통수학 시험"] input[id^="rg-"]').fill('2');
+	await page.locator('section[aria-label="공통수학 시험"] form.result button:has-text("저장")').click();
+	await page.waitForSelector('section[aria-label="공통수학 시험"] .chip:has-text("결과를 저장했어요")');
+	ok('시험 결과 입력', true);
+	await page.screenshot({ path: path.join(OUT, '11-exam-detail.png'), fullPage: true });
+
+	await page.click('nav a:has-text("일반 스터디")');
+	await page.waitForSelector('section[aria-label="오늘 할 일"]');
+	await page.waitForSelector('section[aria-label="오늘 할 일"] li:has-text("시험")');
+	ok('오늘 할 일에 시험 계획이 함께 보임', true);
+
+	await page.click('nav a:has-text("홈")');
+	await page.waitForSelector('a.exam');
+	ok('홈에 시험 D-day 카드', (await page.locator('a.exam').textContent()).includes('D-14'));
+	await page.screenshot({ path: path.join(OUT, '12-home.png'), fullPage: true });
+
+	await page.click('nav a:has-text("시험 대비")');
+	await page.click('a.card.item:has-text("2학기 중간고사")');
+	await page.waitForSelector('h1:has-text("2학기 중간고사")');
+	await page.click('button:has-text("시험 삭제")');
+	await page.waitForURL(`${BASE}/exams`);
+	await page.waitForSelector('.empty:has-text("등록된 시험이 없어요")');
+	ok('시험 삭제 → 목록이 비어 있음', true);
+	await page.click('nav a:has-text("일반 스터디")');
+	await page.waitForSelector('section[aria-label="오늘 할 일"]');
+	ok('시험을 지우면 오늘 할 일의 계획도 사라짐', (await page.locator('section[aria-label="오늘 할 일"] li:has-text("시험")').count()) === 0);
+
 	const realErrors = errors.filter((e) => !/favicon|fonts\.g|status of (401|409|422)/.test(e));
 	ok('콘솔 오류 없음', realErrors.length === 0, JSON.stringify(realErrors));
 
