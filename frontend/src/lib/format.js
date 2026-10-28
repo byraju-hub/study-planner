@@ -51,3 +51,10 @@ export function dueLabel(a) {
 	if (a.status === 'submitted' || a.status === 'graded') return ASSESS_STATUS[a.status];
 	return a.d_day < 0 ? `마감 ${-a.d_day}일 지남` : fmtDday(a.d_day);
 }
+
+export const QUESTION_TYPES = { mcq: '객관식', ox: 'OX', short: '단답형', essay: '서술형', card: '암기 카드' };
+
+/** 0.25 → "25%", null → "—" */
+export function fmtPct(ratio) {
+	return ratio === null || ratio === undefined ? '—' : `${Math.round(ratio * 100)}%`;
+}
