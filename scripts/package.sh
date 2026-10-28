@@ -3,7 +3,8 @@
 #   dist/www_sp/       → 서버의 www/sp/ 로 올린다 (화면 + api/)
 #   dist/sp_private/   → 서버의 홈 폴더 sp_private/ 로 올린다 (www 바깥: PHP 코드, 설정, 업로드)
 #   dist/schema.sql    → phpMyAdmin에서 가져오기(Import)
-#   dist/sp-deploy.zip → 위 세 가지를 한 파일로 묶은 것
+#   dist/migrations/   → 이미 앞 단계를 올린 DB에서 새 단계만 실행할 SQL (번호순)
+#   dist/sp-deploy.zip → 위를 한 파일로 묶은 것
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -56,6 +57,16 @@ cp "$out/sp_private/.htaccess" "$out/sp_private/uploads/.htaccess"
 	done
 } > "$out/schema.sql"
 
-(cd "$out" && rm -f sp-deploy.zip && zip -qr sp-deploy.zip www_sp sp_private schema.sql)
+# 이미 앞 단계를 올린 DB에는 새 마이그레이션만 실행한다. 파일마다 실행 기록(sp_schema_migrations)까지 들어 있다.
+mkdir -p "$out/migrations"
+for f in $(ls "$root"/db/migrations/*.sql | sort); do
+	{
+		cat "$f"
+		echo
+		echo "INSERT IGNORE INTO sp_schema_migrations (name) VALUES ('$(basename "$f")');"
+	} > "$out/migrations/$(basename "$f")"
+done
+
+(cd "$out" && rm -f sp-deploy.zip && zip -qr sp-deploy.zip www_sp sp_private migrations schema.sql)
 echo "완료: $out"
 ls -la "$out"

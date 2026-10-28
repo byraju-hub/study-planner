@@ -34,20 +34,60 @@ final class Session
         return isset($_SESSION['uid']) ? (int) $_SESSION['uid'] : null;
     }
 
-    public static function requireUser(): int
+    /**
+     * 로그인한 사용자 id. 차단·승인 대기 중이거나, 비밀번호 초기화로 세션 버전이
+     * 달라졌으면 로그아웃시키고 null.
+     */
+    public static function currentUserId(): ?int
     {
         $id = self::userId();
+        if ($id === null) {
+            return null;
+        }
+        $row = Db::one('SELECT status, session_version FROM sp_users WHERE id = ?', [$id]);
+        if ($row === null || $row['status'] !== 'active' || (int) $row['session_version'] !== (int) ($_SESSION['ver'] ?? 0)) {
+            self::logout();
+            return null;
+        }
+        return $id;
+    }
+
+    public static function requireUser(): int
+    {
+        $id = self::currentUserId();
         if ($id === null) {
             throw new HttpException(401, 'unauthorized', '로그인이 필요합니다.');
         }
         return $id;
     }
 
+    /** 최고 관리자만 통과. config.php 의 admin_login_id 와 같은 아이디여야 한다. */
+    public static function requireAdmin(): int
+    {
+        $id = self::requireUser();
+        $admin = Config::adminLoginId();
+        $row = Db::one('SELECT login_id FROM sp_users WHERE id = ?', [$id]);
+        if ($admin === '' || $row === null || strtolower((string) $row['login_id']) !== $admin) {
+            throw new HttpException(403, 'forbidden', '관리자만 사용할 수 있어요.');
+        }
+        return $id;
+    }
+
     public static function login(int $userId): void
     {
+        $row = Db::one('SELECT session_version FROM sp_users WHERE id = ?', [$userId]);
         session_regenerate_id(true);
         $_SESSION['uid'] = $userId;
+        $_SESSION['ver'] = (int) ($row['session_version'] ?? 1);
         $_SESSION['csrf'] = bin2hex(random_bytes(32));
+    }
+
+    /** 이 세션은 유지하고 다른 기기의 세션은 모두 무효로 만든다. (비밀번호 변경 후) */
+    public static function invalidateOthers(int $userId): void
+    {
+        Db::run('UPDATE sp_users SET session_version = session_version + 1 WHERE id = ?', [$userId]);
+        $row = Db::one('SELECT session_version FROM sp_users WHERE id = ?', [$userId]);
+        $_SESSION['ver'] = (int) $row['session_version'];
     }
 
     public static function logout(): void

@@ -4,6 +4,7 @@
 	import { get, post } from '#lib/api.js';
 	import { EXAM_TYPES, fmtDday, fmtMD } from '#lib/format.js';
 	import ModeTabs from '#lib/components/ModeTabs.svelte';
+	import ScoreChart from '#lib/components/ScoreChart.svelte';
 
 	let exams = $state([]);
 	let results = $state([]);
@@ -144,6 +145,7 @@
 	{#if shownResults.length > 0}
 		<section class="card stack" aria-label="성적">
 			<h2>성적 기록</h2>
+			<ScoreChart rows={shownResults} />
 			<div class="scroll">
 				<table>
 					<thead><tr><th scope="col">날짜</th><th scope="col">시험</th><th scope="col">과목</th><th scope="col">목표</th><th scope="col">결과</th></tr></thead>

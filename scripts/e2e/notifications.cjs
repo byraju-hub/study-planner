@@ -1,0 +1,31 @@
+const { chromium } = require('playwright');
+const base = process.env.SP_BASE || 'http://127.0.0.1:8080/sp';
+(async () => {
+  const b = await chromium.launch(); const errs = [];
+  const c = await b.newContext({ viewport: { width: 1000, height: 800 } }); const p = await c.newPage();
+  p.on('pageerror', e => errs.push(e.message)); p.on('console', m => m.type() === 'error' && errs.push(m.text()));
+  const ok = (l, v) => { console.log((v ? '  ok   ' : '  FAIL ') + l); if (!v) process.exitCode = 1; };
+  const run = Date.now().toString(36);
+  await p.goto(base + '/signup');
+  await p.fill('#login_id', 'n' + run); await p.fill('#email', `n${run}@example.com`); await p.fill('#password', 'passw0rd123'); await p.fill('#name', '알림이');
+  await p.click('button.btn-primary'); await p.waitForTimeout(900);
+  // 오늘 할 일 추가 (API로) 후 알림함 열기
+  const csrf = await p.evaluate(async () => (await (await fetch('/sp/api/auth/me')).json()).data.csrf);
+  await p.evaluate(async (t) => { await fetch('/sp/api/notifications/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': t }, body: JSON.stringify({ tasks_on: true, review_on: true, exam_on: true, assessment_on: true, morning_time: '00:00', evening_time: null }) }); await fetch('/sp/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': t }, body: JSON.stringify({ title: '수학 숙제', est_minutes: 30 }) }); }, csrf);
+  await p.goto(base + '/'); await p.waitForTimeout(900);
+  ok('종 아이콘에 안 읽은 알림 배지', (await p.locator('.bell .badge').count()) === 1);
+  await p.click('.bell'); await p.waitForTimeout(700);
+  ok('알림함에 오늘 할 일 알림', (await p.textContent('body')).includes('오늘 할 일 1개'));
+  await p.screenshot({ path: '' + require('os').tmpdir() + '/notif.png', fullPage: true });
+  await p.click('.item.unread'); await p.waitForTimeout(700);
+  ok('알림 누르면 해당 화면으로 이동', /\/sp\/?$/.test(p.url()));
+  ok('읽으면 배지 사라짐', (await p.locator('.bell .badge').count()) === 0);
+  await p.goto(base + '/notifications'); await p.waitForTimeout(700);
+  await p.fill('#morning', '06:45'); await p.click('form button.btn-primary'); await p.waitForTimeout(500);
+  ok('설정 저장 안내', (await p.textContent('body')).includes('저장했어요'));
+  const bodyText = await p.textContent('body'); ok('푸시 영역 표시 (설정 여부에 따라 안내 또는 켜기 버튼)', bodyText.includes('푸시 설정이 아직 없어요') || bodyText.includes('푸시 켜기') || bodyText.includes('지원하지 않아요'));
+  const sw = await p.evaluate(async () => { const r = await fetch('/sp/sw.js'); return [r.status, r.headers.get('content-type')]; });
+  ok('sw.js 제공', sw[0] === 200 && /javascript/.test(sw[1]));
+  ok('콘솔 오류 없음', errs.length === 0 || (console.log(errs), false));
+  await b.close();
+})();

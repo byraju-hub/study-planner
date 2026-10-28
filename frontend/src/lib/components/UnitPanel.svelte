@@ -1,7 +1,9 @@
 <script>
 	import { get, post, put, del } from '#lib/api.js';
+	import TocImport from './TocImport.svelte';
 
-	let { textbookId, selectedId = $bindable(null), version = 0, units = $bindable([]) } = $props();
+	let { textbookId, textbookTitle = '', selectedId = $bindable(null), version = 0, units = $bindable([]) } = $props();
+	let importing = $state(false);
 
 	let loaded = $state(false);
 	let error = $state('');
@@ -85,6 +87,28 @@
 		}
 	}
 
+	/** 같은 부모 아래에서 위(-1)·아래(1)로 한 칸 옮긴다. 순서 번호를 1부터 다시 매겨 같은 번호가 있어도 옮겨진다. */
+	async function move(u, dir) {
+		const sibs = units.filter((x) => x.parent_id === u.parent_id).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+		const i = sibs.findIndex((x) => x.id === u.id);
+		const j = i + dir;
+		if (j < 0 || j >= sibs.length) return;
+		[sibs[i], sibs[j]] = [sibs[j], sibs[i]];
+		error = '';
+		try {
+			for (const [idx, x] of sibs.entries()) {
+				if (x.sort_order !== idx + 1) await put(`/units/${x.id}`, { sort_order: idx + 1 });
+			}
+			units = units.map((x) => {
+				const k = sibs.findIndex((s) => s.id === x.id);
+				return k >= 0 ? { ...x, sort_order: k + 1 } : x;
+			}).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+		} catch (e) {
+			error = e.message;
+			await load(textbookId);
+		}
+	}
+
 	async function remove(u) {
 		const extra = u.parent_id === null ? '\n안의 중단원과 자료도 모두 삭제돼요.' : '\n안의 자료도 모두 삭제돼요.';
 		if (!confirm(`'${u.title}' 단원을 삭제할까요?${extra}`)) return;
@@ -144,6 +168,8 @@
 			{#if range(u)}<span class="muted small">{range(u)}</span>{/if}
 			{#if u.material_count > 0}<span class="chip">자료 {u.material_count}</span>{/if}
 		</button>
+		<button class="btn btn-small" onclick={() => move(u, -1)} aria-label="{u.title} 위로">↑</button>
+		<button class="btn btn-small" onclick={() => move(u, 1)} aria-label="{u.title} 아래로">↓</button>
 		<button class="btn btn-small" onclick={() => startEdit(u)} aria-label="{u.title} 수정">수정</button>
 		<button class="btn btn-small btn-danger" onclick={() => remove(u)} aria-label="{u.title} 삭제">삭제</button>
 	{/if}
@@ -152,8 +178,14 @@
 <section class="card stack" aria-label="단원">
 	<div class="row-between">
 		<h2>단원 (목차)</h2>
-		<button class="btn btn-small btn-soft" onclick={() => openAdd('root')} aria-expanded={adding === 'root'}>+ 대단원</button>
+		<div class="row">
+			<button class="btn btn-small" onclick={() => (importing = !importing)} aria-expanded={importing}>서점 목차 가져오기</button>
+			<button class="btn btn-small btn-soft" onclick={() => openAdd('root')} aria-expanded={adding === 'root'}>+ 대단원</button>
+		</div>
 	</div>
+	{#if importing}
+		<TocImport {textbookId} defaultQuery={textbookTitle} onclose={() => (importing = false)} onimported={() => { importing = false; load(textbookId); }} />
+	{/if}
 
 	{#if error}<p class="alert" role="alert">{error}</p>{/if}
 	{#if adding === 'root'}{@render addForm()}{/if}

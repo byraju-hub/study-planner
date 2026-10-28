@@ -12,6 +12,7 @@
 	let subject = $state(null);
 	let notFound = $state(false);
 	let textbookId = $state(null);
+	let textbookTitle = $state('');
 	let unitId = $state(null);
 	let unitVersion = $state(0);
 	let units = $state([]);
@@ -45,9 +46,9 @@
 
 	{#if subject}
 		<div class="panes">
-			<TextbookPanel subjectId={subject.id} bind:selectedId={textbookId} liveUnitCount={textbookId === null ? null : units.length} />
+			<TextbookPanel subjectId={subject.id} bind:selectedId={textbookId} bind:selectedTitle={textbookTitle} liveUnitCount={textbookId === null ? null : units.length} />
 			{#if textbookId !== null}
-				<UnitPanel {textbookId} bind:selectedId={unitId} bind:units version={unitVersion} />
+				<UnitPanel {textbookId} {textbookTitle} bind:selectedId={unitId} bind:units version={unitVersion} />
 			{/if}
 			{#if unit}
 				<MaterialPanel {unit} onchange={() => unitVersion++} />

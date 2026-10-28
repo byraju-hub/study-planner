@@ -3,12 +3,15 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
+use App\Core\Config;
 use App\Core\Db;
 use App\Core\HttpException;
 use App\Core\Input;
 use App\Core\Owned;
 use App\Core\Request;
 use App\Core\Session;
+use App\Core\Settings;
+use App\Services\UserService;
 
 final class AuthController
 {
@@ -17,10 +20,11 @@ final class AuthController
 
     public static function me(Request $req): array
     {
-        $uid = Session::userId();
+        $uid = Session::currentUserId();
         return [
             'user' => $uid === null ? null : self::publicUser($uid),
             'csrf' => Session::csrf(),
+            'signup_mode' => Settings::get('signup_mode'),
         ];
     }
 
@@ -43,10 +47,18 @@ final class AuthController
         $school = Input::str($b, 'school_name', 1, 100, '학교', false);
         $grade = Input::int($b, 'grade', 1, 3, '학년', false);
 
+        // 관리자 아이디는 가입 방식과 상관없이 바로 활성화한다.
+        $isAdmin = $loginId === Config::adminLoginId();
+        $mode = Settings::get('signup_mode');
+        if ($mode === 'closed' && !$isAdmin) {
+            throw new HttpException(403, 'signup_closed', '지금은 새로 가입할 수 없어요. 관리자에게 문의해 주세요.');
+        }
+        $status = ($mode === 'approval' && !$isAdmin) ? 'pending' : 'active';
+
         try {
             $uid = Db::insert(
-                'INSERT INTO sp_users (login_id, email, password_hash, name, school_name, grade) VALUES (?, ?, ?, ?, ?, ?)',
-                [$loginId, $email, self::hash($password), $name, $school, $grade]
+                'INSERT INTO sp_users (login_id, email, password_hash, status, name, school_name, grade) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [$loginId, $email, self::hash($password), $status, $name, $school, $grade]
             );
         } catch (\PDOException $e) {
             if (Owned::isDuplicate($e)) {
@@ -58,6 +70,9 @@ final class AuthController
         }
 
         SubjectController::seedDefaults($uid);
+        if ($status === 'pending') {
+            return ['pending' => true, 'csrf' => Session::csrf()];
+        }
         Session::login($uid);
         return ['user' => self::publicUser($uid), 'csrf' => Session::csrf()];
     }
@@ -72,7 +87,7 @@ final class AuthController
         $ip = $req->ip();
         self::assertNotLocked($loginId, $ip);
 
-        $user = Db::one('SELECT id, password_hash FROM sp_users WHERE login_id = ?', [$loginId]);
+        $user = Db::one('SELECT id, password_hash, status FROM sp_users WHERE login_id = ?', [$loginId]);
         // 없는 아이디도 같은 시간이 걸리도록 더미 해시를 검증한다.
         $hash = $user['password_hash'] ?? self::hash('dummy-password-1');
         $ok = password_verify($password, $hash) && $user !== null;
@@ -83,6 +98,14 @@ final class AuthController
         }
         if (!$ok) {
             throw new HttpException(401, 'bad_credentials', '아이디 또는 비밀번호가 올바르지 않습니다.');
+        }
+
+        // 비밀번호가 맞은 뒤에만 상태를 알려 준다. (아이디 존재 여부를 추측하지 못하게)
+        if ($user['status'] === 'pending') {
+            throw new HttpException(403, 'pending', '가입 승인을 기다리고 있어요. 관리자가 승인하면 로그인할 수 있어요.');
+        }
+        if ($user['status'] === 'blocked') {
+            throw new HttpException(403, 'blocked', '이용이 제한된 계정이에요. 관리자에게 문의해 주세요.');
         }
 
         $uid = (int) $user['id'];
@@ -110,8 +133,25 @@ final class AuthController
         if ($row === null || !password_verify($current, $row['password_hash'])) {
             throw new HttpException(422, 'validation', '현재 비밀번호가 올바르지 않습니다.', 'current_password');
         }
-        Db::run('UPDATE sp_users SET password_hash = ? WHERE id = ?', [self::hash($new), $uid]);
+        Db::run('UPDATE sp_users SET password_hash = ?, must_change_password = 0 WHERE id = ?', [self::hash($new), $uid]);
+        Session::invalidateOthers($uid);
         return ['changed' => true];
+    }
+
+    /** 회원 탈퇴: 비밀번호를 다시 확인하고 모든 데이터를 지운다. 관리자 계정은 탈퇴할 수 없다. */
+    public static function deleteAccount(Request $req): array
+    {
+        $uid = Session::requireUser();
+        $row = Db::one('SELECT login_id, password_hash FROM sp_users WHERE id = ?', [$uid]);
+        if ($row === null || !password_verify((string) ($req->body['password'] ?? ''), $row['password_hash'])) {
+            throw new HttpException(422, 'validation', '비밀번호가 올바르지 않습니다.', 'password');
+        }
+        if (strtolower((string) $row['login_id']) === Config::adminLoginId()) {
+            throw new HttpException(422, 'validation', '관리자 계정은 탈퇴할 수 없어요.');
+        }
+        UserService::delete($uid);
+        Session::logout();
+        return ['deleted' => true, 'csrf' => Session::csrf()];
     }
 
     public static function updateProfile(Request $req): array
@@ -172,12 +212,15 @@ final class AuthController
     private static function publicUser(int $uid): array
     {
         $u = Db::one(
-            'SELECT id, login_id, email, name, school_name, school_code, office_code, grade, class_no FROM sp_users WHERE id = ?',
+            'SELECT id, login_id, email, name, school_name, school_code, office_code, grade, class_no, must_change_password FROM sp_users WHERE id = ?',
             [$uid]
         );
         if ($u === null) {
             throw new HttpException(401, 'unauthorized', '로그인이 필요합니다.');
         }
+        $u['must_change_password'] = (bool) $u['must_change_password'];
+        $admin = Config::adminLoginId();
+        $u['is_admin'] = $admin !== '' && strtolower((string) $u['login_id']) === $admin;
         return $u;
     }
 }

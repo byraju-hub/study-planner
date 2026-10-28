@@ -3,13 +3,18 @@ declare(strict_types=1);
 
 namespace App;
 
+use App\Controllers\AdminController;
 use App\Controllers\AssessmentController;
 use App\Controllers\AuthController;
 use App\Controllers\ExamController;
 use App\Controllers\ExamPlanController;
 use App\Controllers\ExamSubjectController;
+use App\Controllers\IntegrationController;
 use App\Controllers\JournalController;
 use App\Controllers\MaterialController;
+use App\Controllers\NotificationController;
+use App\Controllers\QuestionController;
+use App\Controllers\QuizController;
 use App\Controllers\ReviewController;
 use App\Controllers\SessionController;
 use App\Controllers\StudyController;
@@ -69,6 +74,46 @@ final class App
         $r->add('POST', '/auth/login', [AuthController::class, 'login'], false);
         $r->add('POST', '/auth/logout', [AuthController::class, 'logout'], false);
         $r->add('PUT', '/auth/password', [AuthController::class, 'changePassword']);
+        $r->add('DELETE', '/auth/account', [AuthController::class, 'deleteAccount']);
+
+        $r->add('GET', '/integrations', [IntegrationController::class, 'status']);
+        $r->add('GET', '/catalog/books', [IntegrationController::class, 'books']);
+        $r->add('GET', '/catalog/toc', [IntegrationController::class, 'bookToc']);
+        $r->add('POST', '/textbooks/{id}/import-toc', [IntegrationController::class, 'importToc']);
+        $r->add('GET', '/neis/schools', [IntegrationController::class, 'schools']);
+        $r->add('POST', '/neis/timetable', [IntegrationController::class, 'timetablePreview']);
+        $r->add('POST', '/ai/consent', [IntegrationController::class, 'aiConsent']);
+        $r->add('POST', '/ai/questions', [IntegrationController::class, 'aiQuestions']);
+
+        $r->add('GET', '/questions', [QuestionController::class, 'list']);
+        $r->add('POST', '/questions', [QuestionController::class, 'create']);
+        $r->add('POST', '/questions/bulk', [QuestionController::class, 'bulk']);
+        $r->add('PUT', '/questions/{id}', [QuestionController::class, 'update']);
+        $r->add('DELETE', '/questions/{id}', [QuestionController::class, 'delete']);
+        $r->add('POST', '/quiz/start', [QuizController::class, 'start']);
+        $r->add('POST', '/quiz/attempts/{id}/answer', [QuizController::class, 'answer']);
+        $r->add('POST', '/quiz/attempts/{id}/finish', [QuizController::class, 'finish']);
+        $r->add('GET', '/quiz/attempts', [QuizController::class, 'attempts']);
+        $r->add('GET', '/quiz/stats', [QuizController::class, 'stats']);
+        $r->add('GET', '/wrong-notes', [QuizController::class, 'wrongNotes']);
+
+        $r->add('GET', '/notifications', [NotificationController::class, 'index']);
+        $r->add('POST', '/notifications/read-all', [NotificationController::class, 'readAll']);
+        $r->add('POST', '/notifications/{id}/read', [NotificationController::class, 'read']);
+        $r->add('GET', '/notifications/settings', [NotificationController::class, 'settings']);
+        $r->add('PUT', '/notifications/settings', [NotificationController::class, 'updateSettings']);
+        $r->add('POST', '/push/subscribe', [NotificationController::class, 'subscribe']);
+        $r->add('POST', '/push/unsubscribe', [NotificationController::class, 'unsubscribe']);
+        $r->add('GET', '/cron/notify', [NotificationController::class, 'cron'], false);
+
+        $r->add('GET', '/admin/users', [AdminController::class, 'users']);
+        $r->add('GET', '/admin/stats', [AdminController::class, 'stats']);
+        $r->add('POST', '/admin/users/{id}/status', [AdminController::class, 'setStatus']);
+        $r->add('POST', '/admin/users/{id}/reset-password', [AdminController::class, 'resetPassword']);
+        $r->add('DELETE', '/admin/users/{id}', [AdminController::class, 'deleteUser']);
+        $r->add('GET', '/admin/settings', [AdminController::class, 'settings']);
+        $r->add('PUT', '/admin/settings', [AdminController::class, 'updateSettings']);
+        $r->add('GET', '/admin/log', [AdminController::class, 'logs']);
         $r->add('PUT', '/auth/profile', [AuthController::class, 'updateProfile']);
 
         $r->add('GET', '/subjects', [SubjectController::class, 'list']);

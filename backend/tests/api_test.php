@@ -19,6 +19,7 @@ if (is_file($testConfig)) {
         $pdo->exec('DELETE FROM sp_login_attempts');
     }
 }
+require __DIR__ . '/../src/bootstrap.php';
 $failures = 0;
 $checks = 0;
 
@@ -686,6 +687,470 @@ check('수행평가 삭제', $s === 200, $r);
 check('삭제하면 단계 할 일도 모두 사라짐', count($assessTasks($c, $today, $d10)) === 0, count($assessTasks($c, $today, $d10)));
 [$s, $r] = $c->call('GET', "/assessments/$asId");
 check('삭제된 수행평가 → 404', $s === 404, $r);
+
+echo "[문제 은행 · 퀴즈 · 오답노트]\n";
+$qz = new Client($base);
+$qz->signup("qz$run");
+[$s, $r] = $qz->call('GET', '/subjects');
+$qMath = $r['data'][0]['id'];
+$qOther = $r['data'][1]['id'];
+[$s, $r] = $qz->call('POST', '/textbooks', ['subject_id' => $qMath, 'title' => '퀴즈 교재', 'kind' => 'textbook']);
+$qTb = $r['data']['id'];
+[$s, $r] = $qz->call('POST', '/units', ['textbook_id' => $qTb, 'title' => '1. 약한 단원']);
+$qUnitWeak = $r['data']['id'];
+[$s, $r] = $qz->call('POST', '/units', ['textbook_id' => $qTb, 'title' => '2. 강한 단원']);
+$qUnitStrong = $r['data']['id'];
+
+[$s, $r] = $qz->call('POST', '/questions', ['unit_id' => $qUnitWeak, 'type' => 'mcq', 'prompt' => '1+1은?', 'choices' => ['1', '2', '3'], 'answer' => '1', 'explanation' => '기본 덧셈']);
+check('객관식 문제 만들기 (과목은 단원에서 정해짐)', $s === 200 && $r['data']['subject_id'] === $qMath && $r['data']['choices'] === ['1', '2', '3'] && $r['data']['source'] === 'manual', $r);
+$q1 = $r['data']['id'];
+[$s, $r] = $qz->call('POST', '/questions', ['unit_id' => $qUnitWeak, 'type' => 'ox', 'prompt' => '2는 소수다', 'answer' => 'O']);
+$q2 = $r['data']['id'];
+[$s, $r] = $qz->call('POST', '/questions', ['unit_id' => $qUnitWeak, 'type' => 'short', 'prompt' => '삼각형 내각의 합은?', 'answer' => '180도|180']);
+$q3 = $r['data']['id'];
+[$s, $r] = $qz->call('POST', '/questions', ['unit_id' => $qUnitWeak, 'type' => 'essay', 'prompt' => '판별식을 설명하라', 'answer' => 'b^2-4ac']);
+$q4 = $r['data']['id'];
+[$s, $r] = $qz->call('POST', '/questions', ['unit_id' => $qUnitStrong, 'type' => 'card', 'prompt' => '근의 공식', 'answer' => '(-b±√(b²-4ac))/2a']);
+$q5 = $r['data']['id'];
+[$s, $r] = $qz->call('POST', '/questions', ['subject_id' => $qOther, 'type' => 'ox', 'prompt' => '단원 없는 문제', 'answer' => 'X']);
+check('단원 없이 과목만으로도 문제 만들기', $s === 200 && $r['data']['unit_id'] === null && $r['data']['subject_id'] === $qOther, $r);
+[$s, $r] = $qz->call('POST', '/questions', ['unit_id' => $qUnitWeak, 'type' => 'mcq', 'prompt' => '잘못', 'choices' => ['a'], 'answer' => '0']);
+check('형식 오류(보기 1개) → 422', $s === 422, $r);
+[$s, $r] = $qz->call('POST', '/questions', ['type' => 'ox', 'prompt' => '과목 없음', 'answer' => 'O']);
+check('과목도 단원도 없으면 422', $s === 422, $r);
+[$s, $r] = $b->call('POST', '/questions', ['unit_id' => $qUnitWeak, 'type' => 'ox', 'prompt' => '남의 단원', 'answer' => 'O']);
+check('남의 단원에 문제 만들기 → 404', $s === 404, $r);
+[$s, $r] = $qz->call('GET', "/questions?unit_id=$qUnitWeak");
+check('단원별 문제 목록 (4개, 정답 포함)', count($r['data']) === 4 && isset($r['data'][0]['answer']), count($r['data']));
+[$s, $r] = $qz->call('GET', '/questions?type=card');
+check('형식별 필터', count($r['data']) === 1 && $r['data'][0]['id'] === $q5, $r);
+[$s, $r] = $qz->call('PUT', "/questions/$q2", ['answer' => 'X', 'prompt' => '2는 합성수다']);
+check('문제 수정', $s === 200 && $r['data']['answer'] === 'X' && $r['data']['prompt'] === '2는 합성수다', $r);
+[$s, $r] = $b->call('PUT', "/questions/$q2", ['answer' => 'O']);
+check('남의 문제 수정 → 404', $s === 404, $r);
+[$s, $r] = $qz->call('PUT', "/questions/$q2", ['answer' => 'maybe']);
+check('수정 시에도 형식 검사', $s === 422, $r);
+
+[$s, $r] = $qz->call('POST', '/questions/bulk', ['questions' => [
+    ['unit_id' => $qUnitStrong, 'type' => 'ox', 'prompt' => '대량1', 'answer' => 'O'],
+    ['unit_id' => $qUnitStrong, 'type' => 'short', 'prompt' => '대량2', 'answer' => '답'],
+]]);
+check('여러 문제 한 번에 저장', $s === 200 && $r['data']['created'] === 2, $r);
+[$s, $r] = $qz->call('POST', '/questions/bulk', ['questions' => [
+    ['unit_id' => $qUnitStrong, 'type' => 'ox', 'prompt' => '정상', 'answer' => 'O'],
+    ['unit_id' => $qUnitStrong, 'type' => 'ox', 'prompt' => '', 'answer' => 'O'],
+]]);
+$allBefore = $qz->call('GET', "/questions?unit_id=$qUnitStrong")[1]['data'];
+check('하나라도 틀리면 전부 저장 안 함 + 몇 번째인지 알려 줌', $s === 422 && str_contains($r['error']['message'], '2번째') && count($allBefore) === 3, $r);
+foreach ($allBefore as $q) {
+    if (str_starts_with($q['prompt'], '대량')) {
+        $qz->call('DELETE', '/questions/' . $q['id']);
+    }
+}
+
+// 퀴즈: 약한 단원(4문제 중 3개 틀림) vs 강한 단원
+[$s, $r] = $qz->call('POST', '/quiz/start', ['unit_id' => $qUnitWeak, 'count' => 10]);
+$att = $r['data']['attempt_id'];
+$qs = $r['data']['questions'];
+check('퀴즈 시작: 단원의 문제 4개, 정답은 내려가지 않음', $s === 200 && count($qs) === 4 && !str_contains(json_encode($qs), '"answer"'), $r);
+$ans = fn(int $id, array $body) => $qz->call('POST', "/quiz/attempts/$att/answer", ['question_id' => $id] + $body);
+[$s, $r] = $ans($q1, ['given' => '0']);
+check('객관식 오답 → 정답·해설 공개', $s === 200 && $r['data']['is_correct'] === false && $r['data']['answer_text'] === '2번 2' && $r['data']['explanation'] === '기본 덧셈', $r);
+[$s, $r] = $ans($q1, ['given' => '1']);
+check('같은 퀴즈에서 같은 문제를 또 답하면 409', $s === 409, $r);
+[$s, $r] = $ans($q2, ['given' => 'O']);
+check('OX 오답 (정답 X)', $r['data']['is_correct'] === false, $r);
+[$s, $r] = $ans($q3, ['given' => ' 180 ']);
+check('단답 정답 (여러 정답 중 하나)', $r['data']['is_correct'] === true, $r);
+[$s, $r] = $ans($q4, ['given' => '잘 모르겠음']);
+check('서술형은 스스로 채점해야 함 → 422', $s === 422, $r);
+[$s, $r] = $ans($q4, ['given' => '잘 모르겠음', 'self_correct' => false]);
+check('서술형 스스로 채점(틀림)', $s === 200 && $r['data']['is_correct'] === false && $r['data']['answer'] === 'b^2-4ac', $r);
+[$s, $r] = $b->call('POST', "/quiz/attempts/$att/answer", ['question_id' => $q1, 'given' => '1']);
+check('남의 퀴즈에 답하기 → 404', $s === 404, $r);
+[$s, $r] = $ans($q5, ['self_correct' => true]);
+check('다른 사람이 아니라도 이 퀴즈에 없는 문제도 본인 문제면 채점됨(카드)', $s === 200 && $r['data']['is_correct'] === true, $r);
+[$s, $r] = $qz->call('POST', "/quiz/attempts/$att/finish");
+check('퀴즈 끝: 점수와 틀린 문제 목록', $s === 200 && $r['data']['total'] === 5 && $r['data']['correct'] === 2 && count($r['data']['wrong']) === 3 && isset($r['data']['wrong'][0]['answer_text']), $r);
+[$s, $r] = $ans($q3, ['given' => '180']);
+check('끝난 퀴즈에 답하면 409', $s === 409, $r);
+
+[$s, $r] = $qz->call('GET', '/wrong-notes');
+$wrongIds = array_column($r['data'], 'id');
+sort($wrongIds);
+$expectWrong = [$q1, $q2, $q4];
+sort($expectWrong);
+check('오답노트: 마지막 답이 틀린 문제 3개', $wrongIds === $expectWrong && $r['data'][0]['wrong_count'] === 1 && isset($r['data'][0]['answer_text']), $r);
+[$s, $r] = $qz->call('GET', '/reviews?scope=upcoming');
+$rv = array_values(array_filter($r['data'], fn($x) => str_starts_with($x['title'], '오답:')));
+check('틀린 문제는 내일 복습 목록에 오름 (3개, 중복 없음)', count($rv) === 3 && $rv[0]['next_review_date'] === ReviewControllerDate::plus($today, 1), $rv);
+
+[$s, $r] = $qz->call('GET', '/quiz/stats');
+$st = $r['data'];
+$uw = array_values(array_filter($st['units'], fn($u) => $u['unit_id'] === $qUnitWeak))[0];
+check('통계: 약한 단원 = 4문제 중 1개 정답(25%)', $uw['answered'] === 4 && $uw['correct'] === 1 && $uw['accuracy'] === 0.25 && $uw['weak'] === true, $uw);
+check('통계: 약한 단원 목록과 전체 정답률', count($st['weak_units']) === 1 && $st['weak_units'][0]['unit_id'] === $qUnitWeak && $st['overall']['answered'] === 5 && $st['overall']['correct'] === 2, $st['overall']);
+$sm = array_values(array_filter($st['subjects'], fn($x) => $x['subject_id'] === $qMath))[0];
+check('통계: 과목별 정답률', $sm['answered'] === 5 && $sm['correct'] === 2 && $sm['accuracy'] === 0.4, $sm);
+
+// 두 번째 시도: 오답노트 방식, 이번에는 다 맞힘 → 오답노트에서 빠지고 정답률이 올라감
+[$s, $r] = $qz->call('POST', '/quiz/start', ['mode' => 'wrong', 'subject_id' => $qMath]);
+check('오답노트 방식 퀴즈는 틀린 문제만', $s === 200 && count($r['data']['questions']) === 3, $r);
+$att2 = $r['data']['attempt_id'];
+$right = [$q1 => ['given' => '1'], $q2 => ['given' => 'X'], $q4 => ['given' => '판별식', 'self_correct' => true]];
+foreach ($r['data']['questions'] as $qq) {
+    $qz->call('POST', "/quiz/attempts/$att2/answer", ['question_id' => $qq['id']] + $right[$qq['id']]);
+}
+[$s, $r] = $qz->call('POST', "/quiz/attempts/$att2/finish");
+check('두 번째 퀴즈 전부 정답', $r['data']['total'] === 3 && $r['data']['correct'] === 3 && $r['data']['wrong'] === [], $r);
+[$s, $r] = $qz->call('GET', '/wrong-notes');
+check('다시 맞히면 오답노트에서 자동으로 빠짐', $r['data'] === [], $r);
+$st = $qz->call('GET', '/quiz/stats')[1]['data'];
+check('최근 답 기준이라 약한 단원에서 벗어남', $st['weak_units'] === [] && $st['overall']['correct'] === 5, $st['overall']);
+[$s, $r] = $qz->call('POST', '/quiz/start', ['mode' => 'wrong']);
+check('오답노트가 비면 퀴즈 시작 → 422', $s === 422, $r);
+[$s, $r] = $qz->call('POST', '/quiz/start', ['mode' => 'new', 'subject_id' => $qMath]);
+check('안 푼 문제만 → 없으면 422', $s === 422, $r);
+[$s, $r] = $qz->call('GET', '/quiz/attempts');
+check('퀴즈 기록 2건', count($r['data']) === 2 && $r['data'][0]['correct'] === 3, $r);
+
+// 시험 계획: 약한 단원을 ★ 로 (다시 약하게 만든 뒤 확인)
+[$s, $r] = $qz->call('POST', '/quiz/start', ['unit_id' => $qUnitWeak, 'count' => 4]);
+$att3 = $r['data']['attempt_id'];
+foreach ($r['data']['questions'] as $qq) {
+    $qz->call('POST', "/quiz/attempts/$att3/answer", ['question_id' => $qq['id'], 'given' => 'zzz', 'self_correct' => false]);
+}
+$qz->call('POST', "/quiz/attempts/$att3/finish");
+[$s, $r] = $qz->call('POST', '/exams', ['type' => 'midterm', 'title' => '약점 시험', 'start_date' => ReviewControllerDate::plus($today, 20), 'end_date' => ReviewControllerDate::plus($today, 22)]);
+$qExam = $r['data']['id'];
+[$s, $r] = $qz->call('POST', "/exams/$qExam/subjects", ['subject_id' => $qMath, 'exam_date' => ReviewControllerDate::plus($today, 20)]);
+$qEs = $r['data']['subjects'][0]['id'] ?? 0;
+[$s, $r] = $qz->call('POST', "/exam-subjects/$qEs/scopes", ['unit_ids' => [$qUnitWeak, $qUnitStrong]]);
+check('시험 범위로 단원 추가', $s === 200, $r);
+[$s, $r] = $qz->call('POST', "/exams/$qExam/plan/preview");
+$planTitles = array_column($r['data']['items'] ?? [], 'title');
+check('대비 계획: 약한 단원은 ★, 강한 단원은 ★ 없음', count(array_filter($planTitles, fn($t) => str_contains($t, '★1. 약한 단원'))) > 0 && count(array_filter($planTitles, fn($t) => str_contains($t, '★2. 강한'))) === 0, $planTitles);
+
+[$s, $r] = $qz->call('DELETE', "/questions/$q5");
+check('문제 삭제', $s === 200, $r);
+[$s, $r] = $qz->call('GET', '/reviews?scope=upcoming');
+check('문제를 지우면 그 문제의 복습 항목도 같이 삭제', count(array_filter($r['data'], fn($x) => str_contains($x['title'], '근의 공식'))) === 0, $r);
+
+echo "[알림 · 푸시 · 크론]\n";
+$pushLog = sys_get_temp_dir() . '/sp_push_test.log';
+@unlink($pushLog);
+$fake = proc_open(['php', '-S', '127.0.0.1:8099', __DIR__ . '/fake_push_server.php'], [['file', '/dev/null', 'r'], ['file', '/dev/null', 'w'], ['file', '/dev/null', 'w']], $pipes, null, ['PUSH_LOG' => $pushLog, 'PATH' => getenv('PATH')]);
+usleep(400000);
+
+$n = new Client($base);
+$n->signup("nt$run");
+[$s, $r] = $n->call('GET', '/notifications');
+check('처음엔 알림 없음', $s === 200 && $r['data']['notifications'] === [] && $r['data']['unread'] === 0, $r);
+[$s, $r] = $n->call('GET', '/notifications/settings');
+check('기본 알림 설정 + 푸시 사용 가능 + 공개키', $s === 200 && $r['data']['settings']['morning_time'] === '07:30' && $r['data']['push']['available'] === true && strlen($r['data']['push']['public_key']) > 80, $r);
+[$s, $r] = $n->call('PUT', '/notifications/settings', ['tasks_on' => true, 'review_on' => true, 'exam_on' => true, 'assessment_on' => true, 'morning_time' => '25:00', 'evening_time' => null]);
+check('시각 형식 오류 → 422', $s === 422, $r);
+[$s, $r] = $n->call('PUT', '/notifications/settings', ['tasks_on' => true, 'review_on' => false, 'exam_on' => true, 'assessment_on' => true, 'morning_time' => '00:00', 'evening_time' => null]);
+check('설정 저장 (아침 00:00, 저녁 끔, 복습 끔)', $s === 200 && $r['data']['settings']['morning_time'] === '00:00' && $r['data']['settings']['evening_time'] === null && $r['data']['settings']['review_on'] === false, $r);
+
+$n->call('POST', '/tasks', ['title' => '알림용 할 일', 'task_date' => $today, 'est_minutes' => 45]);
+[$s, $r] = $n->call('GET', '/notifications');
+check('오늘 할 일 요약 알림 생성', count($r['data']['notifications']) === 1 && str_contains($r['data']['notifications'][0]['title'], '오늘 할 일 1개') && $r['data']['unread'] === 1, $r);
+[$s, $r2] = $n->call('GET', '/notifications');
+check('다시 불러도 중복 생성 안 됨', count($r2['data']['notifications']) === 1, $r2);
+$nid = $r['data']['notifications'][0]['id'];
+
+// 푸시 구독: 받는 쪽 키를 직접 만들어 구독하고, 가짜 푸시 서비스가 받은 본문을 풀어 본다.
+$ua = openssl_pkey_new(['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC]);
+$authSecret = random_bytes(16);
+$sub = ['endpoint' => 'http://127.0.0.1:8099/push/ok', 'keys' => ['p256dh' => App\Services\WebPush::b64u(App\Services\WebPush::publicPoint($ua)), 'auth' => App\Services\WebPush::b64u($authSecret)]];
+[$s, $r] = $n->call('POST', '/push/subscribe', ['endpoint' => $sub['endpoint'], 'keys' => ['p256dh' => 'abc', 'auth' => 'def']]);
+check('푸시 키 형식 오류 → 422', $s === 422, $r);
+[$s, $r] = $n->call('POST', '/push/subscribe', $sub);
+check('푸시 구독', $s === 200, $r);
+[$s, $r] = $n->call('POST', '/push/subscribe', $sub);
+[$s, $r] = $n->call('GET', '/notifications/settings');
+check('같은 주소로 다시 구독해도 한 건', $r['data']['push']['subscriptions'] === 1, $r);
+
+$gone = $sub;
+$gone['endpoint'] = 'http://127.0.0.1:8099/push/gone';
+$n->call('POST', '/push/subscribe', $gone);
+
+$n->call('POST', '/exams', ['type' => 'midterm', 'title' => '푸시 시험', 'start_date' => ReviewControllerDate::plus($today, 1), 'end_date' => ReviewControllerDate::plus($today, 3)]);
+[$s, $r] = $n->call('GET', '/notifications');
+check('시험 D-1 알림 생성', $r['data']['notifications'][0]['title'] === '푸시 시험 D-1', $r['data']['notifications'][0] ?? null);
+
+$lines = is_file($pushLog) ? file($pushLog, FILE_IGNORE_NEW_LINES) : [];
+$okReq = null;
+foreach ($lines as $line) {
+    $e = json_decode($line, true);
+    if ($e['path'] === '/push/ok') {
+        $okReq = $e;
+    }
+}
+check('가짜 푸시 서비스가 요청을 받음 (VAPID 헤더·aes128gcm)', $okReq !== null && str_starts_with($okReq['authorization'], 'vapid t=') && $okReq['encoding'] === 'aes128gcm' && $okReq['ttl'] === '86400', $okReq);
+if ($okReq !== null) {
+    $bodyBytes = base64_decode($okReq['body']);
+    $salt = substr($bodyBytes, 0, 16);
+    $idlen = ord($bodyBytes[20]);
+    $asPub = substr($bodyBytes, 21, $idlen);
+    $cipher = substr($bodyBytes, 21 + $idlen);
+    $secret = openssl_pkey_derive(App\Services\WebPush::publicPem($asPub), $ua, 32);
+    $ikm = hash_hkdf('sha256', $secret, 32, "WebPush: info\0" . App\Services\WebPush::publicPoint($ua) . $asPub, $authSecret);
+    $plain = openssl_decrypt(substr($cipher, 0, -16), 'aes-128-gcm', hash_hkdf('sha256', $ikm, 16, "Content-Encoding: aes128gcm\0", $salt), OPENSSL_RAW_DATA, hash_hkdf('sha256', $ikm, 12, "Content-Encoding: nonce\0", $salt), substr($cipher, -16));
+    $msg = json_decode(rtrim((string) $plain, "\x02"), true);
+    check('푸시 본문을 풀면 알림 제목·링크', ($msg['title'] ?? '') === '푸시 시험 D-1' && ($msg['link'] ?? '') === '/exams', $msg);
+}
+check('푸시는 새 알림마다 한 번만', count(array_filter($lines, fn($l) => json_decode($l, true)['path'] === '/push/ok')) === 1, count($lines));
+[$s, $r] = $n->call('GET', '/notifications/settings');
+check('푸시 서비스가 410 을 돌려준 구독은 자동 삭제', $r['data']['push']['subscriptions'] === 1, $r['data']['push']);
+[$s, $r] = $n->call('POST', '/push/unsubscribe', ['endpoint' => $sub['endpoint']]);
+[$s, $r] = $n->call('GET', '/notifications/settings');
+check('구독 해지', $r['data']['push']['subscriptions'] === 0, $r['data']['push']);
+
+[$s, $r] = $b->call('POST', "/notifications/$nid/read");
+check('남의 알림 읽음 처리 → 404', $s === 404, $r);
+[$s, $r] = $n->call('POST', "/notifications/$nid/read");
+[$s, $r] = $n->call('GET', '/notifications');
+check('읽음 처리하면 안 읽은 수 감소', $r['data']['unread'] === 1, $r['data']['unread']);
+$n->call('POST', '/notifications/read-all');
+[$s, $r] = $n->call('GET', '/notifications');
+check('모두 읽음', $r['data']['unread'] === 0, $r['data']['unread']);
+[$s, $r] = $b->call('GET', '/notifications');
+check('다른 회원의 알림은 보이지 않음', !in_array('푸시 시험 D-1', array_column($r['data']['notifications'], 'title'), true), $r);
+
+[$s, $r] = (new Client($base))->call('GET', '/cron/notify');
+check('크론: 토큰 없으면 403', $s === 403, $r);
+[$s, $r] = (new Client($base))->call('GET', '/cron/notify?token=wrong');
+check('크론: 틀린 토큰 → 403', $s === 403, $r);
+[$s, $r] = (new Client($base))->call('GET', '/cron/notify?token=test-cron-token');
+check('크론: 올바른 토큰이면 전체 회원 처리', $s === 200 && $r['data']['users'] >= 2, $r);
+
+proc_terminate($fake);
+proc_close($fake);
+@unlink($pushLog);
+
+echo "[관리자 · 가입 방식 · 회원 탈퇴]\n";
+$adm = new Client($base);
+$adm->boot();
+[$s, $r] = $adm->call('POST', '/auth/login', ['login_id' => 'testadmin', 'password' => 'adminpass1']);
+if ($s === 200) {
+    $adm->csrf = $r['data']['csrf'];
+} else {
+    $adm->signup('testadmin', 'adminpass1');
+}
+[$s, $r] = $adm->call('GET', '/auth/me');
+check('관리자 me → is_admin', $r['data']['user']['is_admin'] === true, $r);
+[$s, $r] = $a->call('GET', '/auth/me');
+check('일반 회원은 is_admin false', $r['data']['user']['is_admin'] === false, $r);
+[$s, $r] = $a->call('GET', '/admin/users');
+check('일반 회원이 관리자 API → 403', $s === 403, $r);
+[$s, $r] = (new Client($base))->call('GET', '/admin/users');
+check('비로그인 관리자 API → 401', $s === 401, $r);
+$adm->call('PUT', '/admin/settings', ['signup_mode' => 'open']);
+
+$adm->call('PUT', '/admin/settings', ['signup_mode' => 'approval']);
+$pend = new Client($base);
+$pend->boot();
+[$s, $r] = $pend->call('POST', '/auth/signup', ['login_id' => "pd$run", 'email' => "pd$run@example.com", 'password' => 'passw0rd123', 'name' => '대기']);
+check('승인제: 가입하면 대기 상태, 로그인 안 됨', $s === 200 && ($r['data']['pending'] ?? false) === true && !isset($r['data']['user']), $r);
+[$s, $r] = $pend->call('GET', '/subjects');
+check('대기 회원은 API 사용 불가', $s === 401, $r);
+[$s, $r] = $pend->call('POST', '/auth/login', ['login_id' => "pd$run", 'password' => 'wrongpass1']);
+check('대기 회원이 틀린 비밀번호 → 일반 오류(상태 노출 안 함)', $s === 401 && $r['error']['code'] === 'bad_credentials', $r);
+[$s, $r] = $pend->call('POST', '/auth/login', ['login_id' => "pd$run", 'password' => 'passw0rd123']);
+check('대기 회원 로그인 → 403 pending', $s === 403 && $r['error']['code'] === 'pending', $r);
+[$s, $r] = $adm->call('GET', '/admin/users?status=pending');
+$pid = 0;
+foreach ($r['data']['users'] as $u) {
+    if ($u['login_id'] === "pd$run") {
+        $pid = $u['id'];
+    }
+}
+check('관리자 목록에 대기 회원', $pid > 0 && count($r['data']['users']) >= 1, $r);
+[$s, $r] = $adm->call('POST', "/admin/users/$pid/status", ['status' => 'active']);
+check('승인', $s === 200, $r);
+$pend->boot();
+[$s, $r] = $pend->call('POST', '/auth/login', ['login_id' => "pd$run", 'password' => 'passw0rd123']);
+check('승인 후 로그인', $s === 200, $r);
+$pend->csrf = $r['data']['csrf'];
+
+$adm->call('PUT', '/admin/settings', ['signup_mode' => 'closed']);
+$cl = new Client($base);
+$cl->boot();
+[$s, $r] = $cl->call('POST', '/auth/signup', ['login_id' => "cl$run", 'email' => "cl$run@example.com", 'password' => 'passw0rd123', 'name' => '닫힘']);
+check('가입 중단: 새 가입 403', $s === 403 && $r['error']['code'] === 'signup_closed', $r);
+[$s, $r] = $cl->call('GET', '/auth/me');
+check('me 에 가입 방식 포함', $r['data']['signup_mode'] === 'closed', $r);
+[$s, $r] = $adm->call('PUT', '/admin/settings', ['signup_mode' => 'weird']);
+check('가입 방식 값 오류 → 422', $s === 422, $r);
+$adm->call('PUT', '/admin/settings', ['signup_mode' => 'open']);
+
+[$s, $r] = $adm->call('POST', "/admin/users/$pid/status", ['status' => 'blocked']);
+check('차단', $s === 200, $r);
+[$s, $r] = $pend->call('GET', '/subjects');
+check('차단하면 쓰던 세션도 즉시 무효', $s === 401, $r);
+$pend->boot();
+[$s, $r] = $pend->call('POST', '/auth/login', ['login_id' => "pd$run", 'password' => 'passw0rd123']);
+check('차단 회원 로그인 → 403 blocked', $s === 403 && $r['error']['code'] === 'blocked', $r);
+$adm->call('POST', "/admin/users/$pid/status", ['status' => 'active']);
+
+[$s, $r] = $adm->call('POST', "/admin/users/$pid/reset-password");
+$temp = $r['data']['temporary_password'] ?? '';
+check('비밀번호 초기화 → 임시 비밀번호 발급', $s === 200 && strlen($temp) === 10, $r);
+$pend->boot();
+[$s, $r] = $pend->call('POST', '/auth/login', ['login_id' => "pd$run", 'password' => 'passw0rd123']);
+check('이전 비밀번호는 더 이상 안 됨', $s === 401, $r);
+[$s, $r] = $pend->call('POST', '/auth/login', ['login_id' => "pd$run", 'password' => $temp]);
+check('임시 비밀번호로 로그인 + 변경 필요 표시', $s === 200 && $r['data']['user']['must_change_password'] === true, $r);
+$pend->csrf = $r['data']['csrf'];
+[$s, $r] = $pend->call('PUT', '/auth/password', ['current_password' => $temp, 'new_password' => 'brandnew77']);
+check('비밀번호 변경', $s === 200, $r);
+[$s, $r] = $pend->call('GET', '/auth/me');
+check('변경 후 must_change_password 해제 + 로그인 유지', $r['data']['user']['must_change_password'] === false, $r);
+
+[$s, $r] = $adm->call('POST', '/admin/users/' . $u1['id'] . '/reset-password');
+$other = new Client($base);
+$other->boot();
+[$s, $r] = $other->call('POST', '/auth/login', ['login_id' => "u1$run", 'password' => 'newpass456']);
+check('다른 기기 세션: 초기화 전 비밀번호는 거부', $s === 401, $r);
+
+[$s, $r] = $adm->call('POST', '/admin/users/' . $adm->call('GET', '/auth/me')[1]['data']['user']['id'] . '/status', ['status' => 'blocked']);
+check('관리자 본인은 차단 불가', $s === 422, $r);
+[$s, $r] = $adm->call('GET', '/admin/stats');
+check('통계', $s === 200 && $r['data']['counts']['active'] >= 2, $r);
+[$s, $r] = $adm->call('GET', '/admin/log');
+$actions = array_column($r['data']['log'], 'action');
+check('관리자 기록에 승인·차단·초기화가 남음', in_array('approve', $actions) && in_array('block', $actions) && in_array('reset_password', $actions), $actions);
+[$s, $r] = $adm->call('GET', '/admin/users?q=pd' . $run);
+check('회원 검색', count($r['data']['users']) === 1 && $r['data']['users'][0]['login_id'] === "pd$run", $r);
+
+// 회원 탈퇴 · 관리자의 회원 삭제
+$bye = new Client($base);
+$byeUser = $bye->signup("bye$run");
+$bye->call('POST', '/subjects', ['name' => '탈퇴과목']);
+[$s, $r] = $bye->call('DELETE', '/auth/account', ['password' => 'wrongpass1']);
+check('탈퇴: 비밀번호가 틀리면 422', $s === 422, $r);
+[$s, $r] = $bye->call('DELETE', '/auth/account', ['password' => 'passw0rd123']);
+check('탈퇴', $s === 200 && $r['data']['deleted'] === true, $r);
+$bye->csrf = $r['data']['csrf'];
+[$s, $r] = $bye->call('POST', '/auth/login', ['login_id' => "bye$run", 'password' => 'passw0rd123']);
+check('탈퇴한 아이디로 로그인 불가', $s === 401, $r);
+[$s, $r] = $adm->call('DELETE', '/auth/account', ['password' => 'adminpass1']);
+check('관리자 계정은 탈퇴 불가', $s === 422, $r);
+
+[$s, $r] = $adm->call('DELETE', "/admin/users/$pid", ['confirm_login_id' => 'nope']);
+check('관리자 삭제: 확인 아이디가 다르면 422', $s === 422, $r);
+[$s, $r] = $adm->call('DELETE', "/admin/users/$pid", ['confirm_login_id' => "pd$run"]);
+check('관리자가 회원 삭제', $s === 200, $r);
+[$s, $r] = $adm->call('GET', '/admin/users?q=pd' . $run);
+check('삭제된 회원은 목록에서 사라짐', count($r['data']['users']) === 0, $r);
+
+echo "[외부 연동: 알라딘 · 나이스 · AI]\n";
+$extLog = sys_get_temp_dir() . '/sp_ext_test.log';
+@unlink($extLog);
+$ext = proc_open(['php', '-S', '127.0.0.1:8098', __DIR__ . '/fake_external_server.php'], [['file', '/dev/null', 'r'], ['file', '/dev/null', 'w'], ['file', '/dev/null', 'w']], $pipes2, null, ['EXT_LOG' => $extLog, 'PATH' => getenv('PATH')]);
+usleep(400000);
+
+$ex = new Client($base);
+$ex->signup("ex$run");
+[$s, $r] = $ex->call('GET', '/integrations');
+check('연동 상태: 알라딘·나이스 설정됨, AI 동의 전', $s === 200 && $r['data']['aladin'] === true && $r['data']['neis'] === true && $r['data']['ai']['available'] === true && $r['data']['ai']['consent'] === false && $r['data']['ai']['remaining_today'] === 3, $r);
+[$s, $r] = (new Client($base))->call('GET', '/catalog/books?q=' . rawurlencode('수학'));
+check('비로그인 연동 호출 → 401', $s === 401, $r);
+
+[$s, $r] = $ex->call('GET', '/catalog/books?q=' . rawurlencode('수'));
+check('검색어 1글자 → 422', $s === 422, $r);
+[$s, $r] = $ex->call('GET', '/catalog/books?q=' . rawurlencode('수학 개념서'));
+check('서점 검색: 제목 없는 항목은 빼고 필요한 필드만', $s === 200 && count($r['data']) === 1 && $r['data'][0]['isbn13'] === '9781234567890' && $r['data'][0]['publisher'] === '테스트출판', $r);
+[$s, $r] = $ex->call('GET', '/catalog/toc?isbn=abc');
+check('ISBN 형식 오류 → 422', $s === 422, $r);
+[$s, $r] = $ex->call('GET', '/catalog/toc?isbn=9781234567890');
+check('목차 가져오기 → 단원 후보', $s === 200 && count($r['data']['items']) === 5 && $r['data']['items'][1]['page_start'] === 8, $r);
+$tocItems = $r['data']['items'];
+[$s, $r] = $ex->call('GET', '/catalog/toc?isbn=9780000000000');
+check('목차가 없는 책은 empty 표시', $s === 200 && $r['data']['empty'] === true && $r['data']['items'] === [], $r);
+
+[$s, $r] = $ex->call('GET', '/subjects');
+$exSub = $r['data'][0]['id'];
+[$s, $r] = $ex->call('POST', '/textbooks', ['subject_id' => $exSub, 'title' => '가져온 교재', 'kind' => 'workbook']);
+$exTb = $r['data']['id'];
+[$s, $r] = $ex->call('POST', "/textbooks/$exTb/import-toc", ['items' => $tocItems]);
+check('목차 후보를 단원으로 저장', $s === 200 && $r['data']['created'] === 5, $r);
+[$s, $r] = $ex->call('GET', "/units?textbook_id=$exTb");
+$tops = array_values(array_filter($r['data'], fn($u) => $u['parent_id'] === null));
+$kids = array_values(array_filter($r['data'], fn($u) => $u['parent_id'] !== null));
+check('대단원 2개 아래에 소단원 3개가 묶임', count($tops) === 2 && count($kids) === 3 && $kids[0]['parent_id'] === $tops[0]['id'] && $kids[2]['parent_id'] === $tops[1]['id'], $r['data']);
+[$s, $r] = $b->call('POST', "/textbooks/$exTb/import-toc", ['items' => $tocItems]);
+check('남의 교재에 목차 저장 → 404', $s === 404, $r);
+[$s, $r] = $ex->call('POST', "/textbooks/$exTb/import-toc", ['items' => [['title' => '']]]);
+check('빈 단원 이름 → 422 (하나라도 틀리면 저장 안 함)', $s === 422, $r);
+[$s, $r] = $ex->call('GET', "/units?textbook_id=$exTb");
+check('실패한 저장은 아무것도 남기지 않음', count($r['data']) === 5, count($r['data']));
+
+[$s, $r] = $ex->call('GET', '/neis/schools?q=' . rawurlencode('테스트'));
+check('학교 검색', $s === 200 && $r['data'][0]['school_code'] === '7530000' && $r['data'][0]['office_code'] === 'J10' && $r['data'][0]['name'] === '테스트고등학교', $r);
+[$s, $r] = $ex->call('POST', '/neis/timetable', ['office_code' => 'J10', 'school_code' => '7530000', 'grade' => 1, 'class_no' => 3]);
+$matched = array_column($r['data']['slots'] ?? [], 'subject_id', 'name');
+check('시간표 미리보기: 내 과목과 짝지음(공통국어1→공통국어), 못 찾은 과목은 unmatched', $s === 200 && count($r['data']['slots']) === 5 && $matched['공통국어1'] === $exSub && $matched['공통수학1'] !== null && $matched['체육'] === null && in_array('자율활동', $r['data']['unmatched'], true), $r);
+[$s, $r] = $ex->call('POST', '/neis/timetable', ['office_code' => 'J10', 'school_code' => '7530000', 'grade' => 1, 'class_no' => 40]);
+check('시간표가 없는 학급 → 빈 목록', $s === 200 && $r['data']['slots'] === [], $r);
+[$s, $r] = $ex->call('POST', '/neis/timetable', ['office_code' => 'J10', 'grade' => 1, 'class_no' => 3]);
+check('학교 코드 없이 요청 → 422', $s === 422, $r);
+
+// AI 문제 후보
+[$s, $r] = $ex->call('POST', '/ai/questions', ['text' => str_repeat('나머지정리는 다항식을 일차식으로 나눈 나머지를 구하는 정리다. ', 3), 'count' => 3]);
+check('동의 전에는 AI 사용 불가 → 403', $s === 403 && $r['error']['code'] === 'consent_required', $r);
+[$s, $r] = $ex->call('POST', '/ai/consent', ['agree' => false]);
+check('동의하지 않으면 422', $s === 422, $r);
+[$s, $r] = $ex->call('POST', '/ai/consent', ['agree' => true]);
+check('AI 사용 동의', $s === 200, $r);
+[$s, $r] = $ex->call('POST', '/ai/questions', ['text' => '너무 짧음']);
+check('노트가 너무 짧으면 422 (한도는 차감 안 됨)', $s === 422, $r);
+$note = str_repeat('나머지정리는 다항식을 일차식으로 나눈 나머지를 구하는 정리다. ', 3);
+[$s, $r] = $ex->call('POST', '/ai/questions', ['text' => $note, 'count' => 5, 'types' => ['mcq', 'ox']]);
+check('AI 문제 후보: 잘못된 문제·허용 안 한 형식은 걸러짐 (2개)', $s === 200 && count($r['data']['questions']) === 2 && $r['data']['questions'][0]['type'] === 'mcq' && $r['data']['remaining_today'] === 2, $r);
+$candidates = $r['data']['questions'];
+$sent = null;
+foreach (file($extLog, FILE_IGNORE_NEW_LINES) as $line) {
+    $e = json_decode($line, true);
+    if (str_ends_with($e['path'], '/v1/messages')) {
+        $sent = $e;
+    }
+}
+check('Claude 요청: x-api-key · anthropic-version 헤더, 노트가 <note> 안에 들어감', $sent !== null && $sent['key'] === 'test-claude' && $sent['version'] === '2023-06-01' && str_contains($sent['body']['messages'][0]['content'], '<note>') && str_contains($sent['body']['messages'][0]['content'], '나머지정리'), $sent['body']['model'] ?? null);
+[$s, $r] = $ex->call('POST', '/questions/bulk', ['source' => 'ai', 'questions' => array_map(fn($q) => $q + ['subject_id' => $exSub], $candidates)]);
+check('학생이 고른 AI 문제를 저장', $s === 200 && $r['data']['created'] === 2, $r);
+[$s, $r] = $ex->call('GET', "/questions?subject_id=$exSub");
+check('저장된 문제는 source=ai 로 표시', count($r['data']) === 2 && $r['data'][0]['source'] === 'ai', $r);
+
+// 단원 노트로 만들기
+[$s, $r] = $ex->call('POST', '/units', ['textbook_id' => $exTb, 'title' => '노트 단원']);
+$noteUnit = $r['data']['id'];
+[$s, $r] = $ex->call('POST', '/materials', ['unit_id' => $noteUnit, 'type' => 'note', 'title' => '정리', 'content' => $note]);
+check('단원에 노트 저장', $s === 200, $r);
+[$s, $r] = $ex->call('POST', '/ai/questions', ['unit_id' => $noteUnit, 'count' => 2]);
+check('단원 노트로 AI 문제 후보 (한도 1 남음)', $s === 200 && $r['data']['remaining_today'] === 1, $r);
+[$s, $r] = $b->call('POST', '/ai/questions', ['unit_id' => $noteUnit, 'count' => 2]);
+check('남의 단원으로 요청 → 403(동의 전)/404', in_array($s, [403, 404], true), $r);
+[$s, $r] = $ex->call('POST', '/ai/questions', ['text' => 'FAILME ' . $note]);
+check('AI 서비스 오류(529) → 502, 한도는 되돌림', $s === 502 && $r['error']['code'] === 'upstream', $r);
+[$s, $r] = $ex->call('GET', '/integrations');
+check('실패한 호출은 한도를 쓰지 않음', $r['data']['ai']['remaining_today'] === 1, $r['data']['ai']);
+$ex->call('POST', '/ai/questions', ['text' => $note]);
+[$s, $r] = $ex->call('POST', '/ai/questions', ['text' => $note]);
+check('하루 한도(3회) 초과 → 429', $s === 429 && $r['error']['code'] === 'limit', $r);
+
+$adm->call('PUT', '/admin/settings', ['ai_enabled' => false]);
+[$s, $r] = $ex->call('GET', '/integrations');
+check('관리자가 AI 를 끄면 사용 불가', $r['data']['ai']['available'] === false, $r['data']['ai']);
+[$s, $r] = $ex->call('POST', '/ai/questions', ['text' => $note]);
+check('AI 꺼진 상태에서 호출 → 503', $s === 503, $r);
+$adm->call('PUT', '/admin/settings', ['ai_enabled' => true]);
+
+proc_terminate($ext);
+proc_close($ext);
+@unlink($extLog);
 
 echo "\n" . ($failures === 0 ? "전체 통과 ($checks)" : "실패 $failures / $checks") . "\n";
 exit($failures === 0 ? 0 : 1);

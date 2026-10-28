@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { auth, logout } from '#lib/auth.svelte.js';
-	import { put } from '#lib/api.js';
+	import { api, put, setCsrf } from '#lib/api.js';
 
 	let profile = $state({
 		name: auth.user.name,
@@ -41,8 +41,26 @@
 			await put('/auth/password', pw);
 			pw = { current_password: '', new_password: '' };
 			pwMsg = '비밀번호를 바꿨어요.';
+			auth.user = { ...auth.user, must_change_password: false };
 		} catch (e) {
 			pwErr = e.message;
+		}
+	}
+
+	let del = $state({ password: '' });
+	let delErr = $state('');
+	let delOpen = $state(false);
+
+	async function deleteAccount(event) {
+		event.preventDefault();
+		delErr = '';
+		try {
+			const data = await api('DELETE', '/auth/account', { password: del.password });
+			setCsrf(data.csrf);
+			auth.user = null;
+			goto(resolve('/login'));
+		} catch (e) {
+			delErr = e.message;
 		}
 	}
 
@@ -56,6 +74,10 @@
 
 <div class="stack" style="gap: 20px; max-width: 560px;">
 	<h1>설정</h1>
+
+	{#if auth.user.must_change_password}
+		<p class="alert" role="alert">관리자가 비밀번호를 초기화했어요. 아래에서 새 비밀번호를 정해야 다른 화면을 쓸 수 있어요.</p>
+	{/if}
 
 	<form class="card stack" onsubmit={saveProfile}>
 		<h2>내 정보</h2>
@@ -104,4 +126,27 @@
 	</form>
 
 	<button class="btn btn-danger" onclick={doLogout}>로그아웃</button>
+
+	{#if !auth.user.is_admin}
+		<section class="card stack">
+			<h2>회원 탈퇴</h2>
+			{#if !delOpen}
+				<p class="muted small">탈퇴하면 과목·교재·자료·기록이 모두 지워지고 되돌릴 수 없어요.</p>
+				<button class="btn" onclick={() => (delOpen = true)}>탈퇴하기</button>
+			{:else}
+				<form class="stack" onsubmit={deleteAccount}>
+					<p class="alert">정말 탈퇴할까요? 모든 데이터가 바로 삭제돼요.</p>
+					{#if delErr}<p class="alert" role="alert">{delErr}</p>{/if}
+					<div class="field">
+						<label for="delpw">비밀번호 확인</label>
+						<input id="delpw" class="input" type="password" autocomplete="current-password" bind:value={del.password} required />
+					</div>
+					<div class="row">
+						<button class="btn btn-danger">탈퇴</button>
+						<button type="button" class="btn" onclick={() => (delOpen = false)}>취소</button>
+					</div>
+				</form>
+			{/if}
+		</section>
+	{/if}
 </div>

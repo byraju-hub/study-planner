@@ -411,3 +411,10 @@ index.php (라우터) → Middleware(세션·CSRF·JSON) → Controller → Serv
 2. Cafe24 상품에서 www 바깥 폴더 사용 가능 여부, composer 사용 가능 여부(불가 시 web-push 라이브러리를 vendor째 업로드).
 3. 알림 채널: Web Push만으로 충분한지, 이메일/카카오 알림톡도 필요한지(알림톡은 유료).
 4. AI 문제 생성 사용 여부(API 비용 발생).
+
+## 12. 구현하면서 설계와 달라진 점 (3~5단계, 2026-10)
+- **관리자**: 별도 역할 컬럼 없이 `config.php`의 `admin_login_id`와 같은 아이디가 관리자다(한 명). 회원 상태(`active/pending/blocked`), `must_change_password`, `session_version`(차단·초기화 시 기존 세션 무효), `sp_settings`(가입 방식, AI 스위치), `sp_admin_log`.
+- **알림**: `sp_notifications`(+`dedupe_key` 유일), `sp_notification_settings`, `sp_push_subscriptions`. 알림 계산은 순수 함수 `NotificationPlanner`, 저장·푸시는 `NotificationService`. 생성 시점은 (1) 앱이 알림함을 불러올 때 (2) `/cron/notify?token=`. 푸시는 새로 만든 알림에만 한 번 보낸다.
+- **퀴즈**: `sp_questions`, `sp_quiz_attempts`, `sp_quiz_answers`, `sp_review_items.question_id`. 설계의 "문제 은행"에 해당하며, 오답노트는 별도 테이블 없이 "문제별 가장 최근 답이 오답"으로 계산한다.
+- **외부 연동**: `sp_book_catalog` 캐시는 만들지 않았다(검색 결과를 저장하지 않고, 학생이 고른 목차만 단원으로 저장). AI는 `sp_ai_usage`(하루 호출 수)와 `sp_users.ai_consent_at`(동의)로 제한한다.
+- 외부 서비스 명세 중 확인하지 못한 부분은 `docs/PROGRESS.md`의 "실제 서비스로 확인하지 못한 것"에 적어 두었다.

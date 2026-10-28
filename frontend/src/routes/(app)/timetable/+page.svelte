@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { get, put } from '#lib/api.js';
+	import NeisImport from '#lib/components/NeisImport.svelte';
 
 	const DAYS = ['월', '화', '수', '목', '금'];
 
@@ -13,6 +14,7 @@
 	let error = $state('');
 	let message = $state('');
 	let busy = $state(false);
+	let importing = $state(false);
 
 	onMount(async () => {
 		try {
@@ -27,6 +29,15 @@
 		}
 		loaded = true;
 	});
+
+	function fill(slots) {
+		const g = { ...grid };
+		for (const s of slots) {
+			g[`${s.weekday}-${s.period}`] = String(s.subject_id);
+			if (s.period > maxPeriod) maxPeriod = Math.min(s.period, 8);
+		}
+		grid = g;
+	}
 
 	async function save(event) {
 		event.preventDefault();
@@ -62,6 +73,11 @@
 	{#if message}<p class="chip" role="status">{message}</p>{/if}
 
 	{#if loaded}
+		{#if importing}
+			<NeisImport onfill={fill} onclose={() => (importing = false)} />
+		{:else}
+			<button class="btn btn-soft" style="align-self: flex-start;" onclick={() => (importing = true)}>나이스에서 시간표 가져오기</button>
+		{/if}
 		<form class="card stack" onsubmit={save}>
 			<div class="scroll">
 				<table>
