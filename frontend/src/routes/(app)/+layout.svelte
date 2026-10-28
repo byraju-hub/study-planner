@@ -2,12 +2,28 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import { onMount } from 'svelte';
 	import { auth } from '#lib/auth.svelte.js';
+	import { inbox, refreshInbox } from '#lib/notify.svelte.js';
 
 	let { children } = $props();
 
 	$effect(() => {
 		if (auth.ready && !auth.user) goto(resolve('/login'), { replaceState: true });
+	});
+
+	// 알림함은 앱을 열 때와 5분마다, 탭으로 돌아올 때 새로 가져온다. (알림 생성은 서버가 이 요청에서 한다)
+	onMount(() => {
+		const tick = () => {
+			if (auth.user && !auth.user.must_change_password && !document.hidden) refreshInbox().catch(() => {});
+		};
+		tick();
+		const timer = setInterval(tick, 5 * 60 * 1000);
+		document.addEventListener('visibilitychange', tick);
+		return () => {
+			clearInterval(timer);
+			document.removeEventListener('visibilitychange', tick);
+		};
 	});
 
 	// 관리자가 비밀번호를 초기화한 회원은 새 비밀번호를 정할 때까지 설정 화면에만 머문다.
@@ -51,6 +67,10 @@
 				<span class="who-text"><strong>{auth.user.name}</strong><span class="muted small">{auth.user.school_name ?? '고등학생'}</span></span>
 			</div>
 		</nav>
+		<a class="bell" href={resolve('/notifications')} aria-label={inbox.unread > 0 ? `알림 ${inbox.unread}개` : '알림'}>
+			<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7zM10 20a2 2 0 0 0 4 0" /></svg>
+			{#if inbox.unread > 0}<span class="badge">{inbox.unread > 9 ? '9+' : inbox.unread}</span>{/if}
+		</a>
 		<main class="content">{@render children()}</main>
 	</div>
 {/if}
@@ -134,6 +154,35 @@
 		line-height: 1.3;
 		min-width: 0;
 	}
+	.bell {
+		position: fixed;
+		top: 14px;
+		right: 20px;
+		z-index: 5;
+		width: 44px;
+		height: 44px;
+		display: grid;
+		place-items: center;
+		border-radius: 50%;
+		background: var(--surface);
+		border: 1px solid var(--line);
+		color: var(--ink);
+	}
+	.badge {
+		position: absolute;
+		top: -2px;
+		right: -2px;
+		min-width: 18px;
+		height: 18px;
+		padding: 0 5px;
+		border-radius: 9px;
+		background: var(--danger);
+		color: #fff;
+		font-size: 11px;
+		font-weight: 700;
+		display: grid;
+		place-items: center;
+	}
 	.content {
 		flex: 1;
 		min-width: 0;
@@ -172,6 +221,10 @@
 			border-radius: 0;
 			font-size: 11px;
 			padding: 0;
+		}
+		.bell {
+			top: 10px;
+			right: 12px;
 		}
 		.content {
 			padding: 20px 16px 88px;
