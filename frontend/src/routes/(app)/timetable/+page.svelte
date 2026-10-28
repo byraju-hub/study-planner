@@ -76,7 +76,7 @@
 		{#if importing}
 			<NeisImport onfill={fill} onclose={() => (importing = false)} />
 		{:else}
-			<button class="btn btn-soft" style="align-self: flex-start;" onclick={() => (importing = true)}>나이스에서 시간표 가져오기</button>
+			<button class="btn btn-soft" style="align-self: flex-start;" onclick={() => (importing = true)}>나이스(neis.go.kr - 교육부 산하기관)에서 시간표 가져오기</button>
 		{/if}
 		<form class="card stack" onsubmit={save}>
 			<div class="scroll">

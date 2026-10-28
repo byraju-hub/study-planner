@@ -81,7 +81,7 @@
 		<p>우리 학교 시간표는 교육청이 공개한 나이스 자료에서 가져올 수 있어요.</p>
 		<ol>
 			<li><strong>스터디</strong> 화면에서 <strong>시간표</strong>로 들어가요.</li>
-			<li><strong>나이스에서 시간표 가져오기</strong>를 눌러요.</li>
+			<li><strong>나이스(neis.go.kr - 교육부 산하기관)에서 시간표 가져오기</strong>를 눌러요.</li>
 			<li><strong>학교 이름</strong>을 넣고 <strong>검색</strong>해서 우리 학교를 골라요. 이름이 같은 학교가 여러 곳이면 지역과 주소를 보고 골라요.</li>
 			<li><strong>학년</strong>과 <strong>반</strong>을 넣고 <strong>불러오기</strong>를 눌러요. 이번 주 시간표가 미리 보기로 나와요.</li>
 			<li>시간표 칸이 내 과목으로 채워져요(예: 공통국어1 → 공통국어). 내 과목에 없는 수업은 건너뛰었다고 알려 줘요. 선택 과목처럼 반마다 다른 수업은 직접 확인해서 고쳐요. <strong>확인한 뒤 아래에서 저장</strong>해야 반영돼요.</li>

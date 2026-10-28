@@ -59,7 +59,7 @@
 
 <div class="card stack" style="background: var(--bg);">
 	<div class="row-between">
-		<h3>나이스에서 시간표 가져오기</h3>
+		<h3>나이스(neis.go.kr - 교육부 산하기관)에서 시간표 가져오기</h3>
 		<button class="btn btn-small" onclick={onclose}>닫기</button>
 	</div>
 
