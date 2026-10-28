@@ -1,0 +1,11 @@
+{
+	"name": "스터디 플래너",
+	"short_name": "스터디 플래너",
+	"start_url": "/sp/",
+	"scope": "/sp/",
+	"display": "standalone",
+	"orientation": "portrait",
+	"background_color": "#f4f8f3",
+	"theme_color": "#2e7d5b",
+	"icons": [{ "src": "/sp/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
