@@ -14,13 +14,18 @@ final class TocParser
     /** @return list<array{title:string,page_start:?int,page_end:?int,level:int}> */
     public static function parse(string $raw): array
     {
-        $text = preg_replace('#<\s*(br|/p|/li|/div)\s*/?\s*>#i', "\n", $raw);
+        // YES24 목차: 대단원은 <b>…</b>, 하위 항목은 일반 줄(앞에 __ 가 붙기도 함). 굵은 줄이 있으면 그것을 대단원으로 본다.
+        $hasBold = (bool) preg_match('#<b>.*?</b>#is', $raw);
+        $text = preg_replace_callback('#<b>(.*?)</b>#is', static fn(array $m): string => "\n\x01" . $m[1] . "\n", $raw);
+        $text = preg_replace('#<\s*(br|/p|/li|/div)\s*/?\s*>#i', "\n", (string) $text);
         $text = html_entity_decode(strip_tags((string) $text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $items = [];
         $sawTop = false;
 
         foreach (preg_split('/\R/u', $text) ?: [] as $line) {
-            $line = trim((string) preg_replace('/[\x{00A0}\t]+/u', ' ', $line));
+            $bold = str_contains($line, "\x01");
+            $line = trim((string) preg_replace('/[\x{00A0}\t\x01]+/u', ' ', $line));
+            $line = trim((string) preg_replace('/^_+\s*/u', '', $line));
             if (mb_strlen($line) < 2) {
                 continue;
             }
@@ -29,7 +34,7 @@ final class TocParser
                 $line = trim($m[1]);
                 $page = (int) $m[2];
             }
-            $level = self::level($line, $sawTop);
+            $level = $hasBold ? ($bold || !$sawTop ? 1 : 2) : self::level($line, $sawTop);
             if ($level === 1) {
                 $sawTop = true;
             }

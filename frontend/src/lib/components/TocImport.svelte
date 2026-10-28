@@ -80,7 +80,7 @@
 	{#if status && !status.yes24}
 		<p class="muted small">YES24 연동이 설정되지 않았어요. 관리자가 YES24 API 키를 서버 설정에 넣으면 쓸 수 있어요. 그동안은 단원을 직접 추가해 주세요.</p>
 	{:else}
-		<p class="muted small">단원 이름과 쪽수만 가져와요. 서점 목차는 형식이 제각각이라 저장 전에 꼭 확인하고 고쳐 주세요.</p>
+		<p class="muted small">단원 이름과 쪽수만 가져와요. 서점 목차는 형식이 제각각이라 저장 전에 꼭 확인하고 고쳐 주세요. 목차 정보 출처: <a href="https://www.yes24.com" target="_blank" rel="noopener">YES24</a></p>
 		{#if error}<p class="alert" role="alert">{error}</p>{/if}
 
 		<form class="row" onsubmit={search}>

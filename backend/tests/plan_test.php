@@ -282,6 +282,14 @@ check('빈 입력은 빈 목록', TocParser::parse('') === [] && TocParser::pars
 check('300개까지만', count(TocParser::parse(implode("\n", array_map(fn($i) => "$i. 단원 $i", range(1, 400))))) === 300);
 $flat = TocParser::parse("개념 정리\n문제 풀이\n마무리");
 check('구분 표시가 없으면 첫 줄은 대단원, 이후는 소단원', $flat[0]['level'] === 1 && $flat[1]['level'] === 2, $flat);
+$y24 = TocParser::parse("<B>Ⅰ. 기본 도형</b>
+
+01 기본 도형
+__ 02 위치 관계
+
+<B>Ⅱ. 평면도형</b>
+05 다각형");
+check('YES24 형식: 굵은 줄은 대단원, 나머지(앞의 __ 포함)는 소단원', count($y24) === 5 && $y24[0]['level'] === 1 && $y24[1]['level'] === 2 && $y24[2]['title'] === '02 위치 관계' && $y24[3]['level'] === 1 && $y24[4]['level'] === 2, $y24);
 
 echo "[나이스 응답 해석]\n";
 $tt = Neis::mapTimetable([
