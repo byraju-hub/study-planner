@@ -10,15 +10,17 @@ namespace App\Services;
  *   1회독(약 60%) → 문제풀이(나머지) → 총정리(약 15%, 최소 하루)
  * 시험 범위(단원)는 쪽수에 비례해서 구간 안의 날짜에 배분한다.
  * 같은 과목·같은 날·같은 단계의 범위는 할 일 하나로 합친다.
+ * 퀴즈로 약하다고 나온 범위(weak)는 문제풀이·총정리 단계에서 1.5배 시간을 잡고 ★ 로 표시한다.
  */
 final class PlanService
 {
     public const PHASE_LABELS = ['read' => '범위 1회독', 'practice' => '문제풀이', 'review' => '총정리'];
 
     private const DEFAULT_WEIGHT = 10;
+    private const WEAK_BOOST = 1.5;
 
     /**
-     * @param list<array{id:int,subject_id:int,subject_name:string,exam_date:string,scopes:list<array{label:string,pages:?int}>}> $subjects
+     * @param list<array{id:int,subject_id:int,subject_name:string,exam_date:string,scopes:list<array{label:string,pages:?int,weak?:bool}>}> $subjects
      * @return array{items:list<array<string,mixed>>,skipped:list<array{exam_subject_id:int,subject_name:string,reason:string}>}
      */
     public static function generate(array $subjects, string $today): array
@@ -115,7 +117,7 @@ final class PlanService
             return $out;
         }
 
-        $perDay = self::distribute($scopes, count($days));
+        $perDay = self::distribute($scopes, count($days), $phase !== 'read');
         foreach ($perDay as $dayIdx => $parts) {
             if (count($parts) === 0) {
                 continue;
@@ -125,7 +127,7 @@ final class PlanService
             $known = false;
             foreach ($parts as $part) {
                 $sc = $scopes[$part['scope']];
-                $names[] = $sc['label'] . ($part['parts'] > 1 ? " ({$part['part']}/{$part['parts']})" : '');
+                $names[] = (!empty($sc['weak']) && $phase !== 'read' ? '★' : '') . $sc['label'] . ($part['parts'] > 1 ? " ({$part['part']}/{$part['parts']})" : '');
                 if ($sc['pages'] !== null) {
                     $pages += $sc['pages'] / $part['parts'];
                     $known = true;
@@ -141,12 +143,15 @@ final class PlanService
      * 범위를 쪽수 비례로 날짜에 나눈다. 큰 범위는 여러 날에 걸쳐 "(1/3)"처럼 쪼개고,
      * 작은 범위는 중간 지점이 속한 하루에 넣는다. 범위가 날짜보다 적어도 빈 날이 생기지 않는다.
      *
-     * @param list<array{label:string,pages:?int}> $scopes
+     * @param list<array{label:string,pages:?int,weak?:bool}> $scopes
      * @return array<int,list<array{scope:int,part:int,parts:int}>> 날짜 인덱스 → 그날 할 범위들
      */
-    private static function distribute(array $scopes, int $dayCount): array
+    private static function distribute(array $scopes, int $dayCount, bool $boostWeak = false): array
     {
-        $weights = array_map(static fn(array $sc): int => max(1, $sc['pages'] ?? self::DEFAULT_WEIGHT), $scopes);
+        $weights = array_map(static function (array $sc) use ($boostWeak): float {
+            $w = max(1, $sc['pages'] ?? self::DEFAULT_WEIGHT);
+            return $boostWeak && !empty($sc['weak']) ? $w * self::WEAK_BOOST : (float) $w;
+        }, $scopes);
         $total = array_sum($weights);
         $len = $total / $dayCount;
         $result = array_fill(0, $dayCount, []);

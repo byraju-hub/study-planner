@@ -12,6 +12,8 @@ use App\Controllers\ExamSubjectController;
 use App\Controllers\JournalController;
 use App\Controllers\MaterialController;
 use App\Controllers\NotificationController;
+use App\Controllers\QuestionController;
+use App\Controllers\QuizController;
 use App\Controllers\ReviewController;
 use App\Controllers\SessionController;
 use App\Controllers\StudyController;
@@ -72,6 +74,18 @@ final class App
         $r->add('POST', '/auth/logout', [AuthController::class, 'logout'], false);
         $r->add('PUT', '/auth/password', [AuthController::class, 'changePassword']);
         $r->add('DELETE', '/auth/account', [AuthController::class, 'deleteAccount']);
+
+        $r->add('GET', '/questions', [QuestionController::class, 'list']);
+        $r->add('POST', '/questions', [QuestionController::class, 'create']);
+        $r->add('POST', '/questions/bulk', [QuestionController::class, 'bulk']);
+        $r->add('PUT', '/questions/{id}', [QuestionController::class, 'update']);
+        $r->add('DELETE', '/questions/{id}', [QuestionController::class, 'delete']);
+        $r->add('POST', '/quiz/start', [QuizController::class, 'start']);
+        $r->add('POST', '/quiz/attempts/{id}/answer', [QuizController::class, 'answer']);
+        $r->add('POST', '/quiz/attempts/{id}/finish', [QuizController::class, 'finish']);
+        $r->add('GET', '/quiz/attempts', [QuizController::class, 'attempts']);
+        $r->add('GET', '/quiz/stats', [QuizController::class, 'stats']);
+        $r->add('GET', '/wrong-notes', [QuizController::class, 'wrongNotes']);
 
         $r->add('GET', '/notifications', [NotificationController::class, 'index']);
         $r->add('POST', '/notifications/read-all', [NotificationController::class, 'readAll']);

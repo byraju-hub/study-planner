@@ -688,6 +688,154 @@ check('삭제하면 단계 할 일도 모두 사라짐', count($assessTasks($c, 
 [$s, $r] = $c->call('GET', "/assessments/$asId");
 check('삭제된 수행평가 → 404', $s === 404, $r);
 
+echo "[문제 은행 · 퀴즈 · 오답노트]\n";
+$qz = new Client($base);
+$qz->signup("qz$run");
+[$s, $r] = $qz->call('GET', '/subjects');
+$qMath = $r['data'][0]['id'];
+$qOther = $r['data'][1]['id'];
+[$s, $r] = $qz->call('POST', '/textbooks', ['subject_id' => $qMath, 'title' => '퀴즈 교재', 'kind' => 'textbook']);
+$qTb = $r['data']['id'];
+[$s, $r] = $qz->call('POST', '/units', ['textbook_id' => $qTb, 'title' => '1. 약한 단원']);
+$qUnitWeak = $r['data']['id'];
+[$s, $r] = $qz->call('POST', '/units', ['textbook_id' => $qTb, 'title' => '2. 강한 단원']);
+$qUnitStrong = $r['data']['id'];
+
+[$s, $r] = $qz->call('POST', '/questions', ['unit_id' => $qUnitWeak, 'type' => 'mcq', 'prompt' => '1+1은?', 'choices' => ['1', '2', '3'], 'answer' => '1', 'explanation' => '기본 덧셈']);
+check('객관식 문제 만들기 (과목은 단원에서 정해짐)', $s === 200 && $r['data']['subject_id'] === $qMath && $r['data']['choices'] === ['1', '2', '3'] && $r['data']['source'] === 'manual', $r);
+$q1 = $r['data']['id'];
+[$s, $r] = $qz->call('POST', '/questions', ['unit_id' => $qUnitWeak, 'type' => 'ox', 'prompt' => '2는 소수다', 'answer' => 'O']);
+$q2 = $r['data']['id'];
+[$s, $r] = $qz->call('POST', '/questions', ['unit_id' => $qUnitWeak, 'type' => 'short', 'prompt' => '삼각형 내각의 합은?', 'answer' => '180도|180']);
+$q3 = $r['data']['id'];
+[$s, $r] = $qz->call('POST', '/questions', ['unit_id' => $qUnitWeak, 'type' => 'essay', 'prompt' => '판별식을 설명하라', 'answer' => 'b^2-4ac']);
+$q4 = $r['data']['id'];
+[$s, $r] = $qz->call('POST', '/questions', ['unit_id' => $qUnitStrong, 'type' => 'card', 'prompt' => '근의 공식', 'answer' => '(-b±√(b²-4ac))/2a']);
+$q5 = $r['data']['id'];
+[$s, $r] = $qz->call('POST', '/questions', ['subject_id' => $qOther, 'type' => 'ox', 'prompt' => '단원 없는 문제', 'answer' => 'X']);
+check('단원 없이 과목만으로도 문제 만들기', $s === 200 && $r['data']['unit_id'] === null && $r['data']['subject_id'] === $qOther, $r);
+[$s, $r] = $qz->call('POST', '/questions', ['unit_id' => $qUnitWeak, 'type' => 'mcq', 'prompt' => '잘못', 'choices' => ['a'], 'answer' => '0']);
+check('형식 오류(보기 1개) → 422', $s === 422, $r);
+[$s, $r] = $qz->call('POST', '/questions', ['type' => 'ox', 'prompt' => '과목 없음', 'answer' => 'O']);
+check('과목도 단원도 없으면 422', $s === 422, $r);
+[$s, $r] = $b->call('POST', '/questions', ['unit_id' => $qUnitWeak, 'type' => 'ox', 'prompt' => '남의 단원', 'answer' => 'O']);
+check('남의 단원에 문제 만들기 → 404', $s === 404, $r);
+[$s, $r] = $qz->call('GET', "/questions?unit_id=$qUnitWeak");
+check('단원별 문제 목록 (4개, 정답 포함)', count($r['data']) === 4 && isset($r['data'][0]['answer']), count($r['data']));
+[$s, $r] = $qz->call('GET', '/questions?type=card');
+check('형식별 필터', count($r['data']) === 1 && $r['data'][0]['id'] === $q5, $r);
+[$s, $r] = $qz->call('PUT', "/questions/$q2", ['answer' => 'X', 'prompt' => '2는 합성수다']);
+check('문제 수정', $s === 200 && $r['data']['answer'] === 'X' && $r['data']['prompt'] === '2는 합성수다', $r);
+[$s, $r] = $b->call('PUT', "/questions/$q2", ['answer' => 'O']);
+check('남의 문제 수정 → 404', $s === 404, $r);
+[$s, $r] = $qz->call('PUT', "/questions/$q2", ['answer' => 'maybe']);
+check('수정 시에도 형식 검사', $s === 422, $r);
+
+[$s, $r] = $qz->call('POST', '/questions/bulk', ['questions' => [
+    ['unit_id' => $qUnitStrong, 'type' => 'ox', 'prompt' => '대량1', 'answer' => 'O'],
+    ['unit_id' => $qUnitStrong, 'type' => 'short', 'prompt' => '대량2', 'answer' => '답'],
+]]);
+check('여러 문제 한 번에 저장', $s === 200 && $r['data']['created'] === 2, $r);
+[$s, $r] = $qz->call('POST', '/questions/bulk', ['questions' => [
+    ['unit_id' => $qUnitStrong, 'type' => 'ox', 'prompt' => '정상', 'answer' => 'O'],
+    ['unit_id' => $qUnitStrong, 'type' => 'ox', 'prompt' => '', 'answer' => 'O'],
+]]);
+$allBefore = $qz->call('GET', "/questions?unit_id=$qUnitStrong")[1]['data'];
+check('하나라도 틀리면 전부 저장 안 함 + 몇 번째인지 알려 줌', $s === 422 && str_contains($r['error']['message'], '2번째') && count($allBefore) === 3, $r);
+foreach ($allBefore as $q) {
+    if (str_starts_with($q['prompt'], '대량')) {
+        $qz->call('DELETE', '/questions/' . $q['id']);
+    }
+}
+
+// 퀴즈: 약한 단원(4문제 중 3개 틀림) vs 강한 단원
+[$s, $r] = $qz->call('POST', '/quiz/start', ['unit_id' => $qUnitWeak, 'count' => 10]);
+$att = $r['data']['attempt_id'];
+$qs = $r['data']['questions'];
+check('퀴즈 시작: 단원의 문제 4개, 정답은 내려가지 않음', $s === 200 && count($qs) === 4 && !str_contains(json_encode($qs), '"answer"'), $r);
+$ans = fn(int $id, array $body) => $qz->call('POST', "/quiz/attempts/$att/answer", ['question_id' => $id] + $body);
+[$s, $r] = $ans($q1, ['given' => '0']);
+check('객관식 오답 → 정답·해설 공개', $s === 200 && $r['data']['is_correct'] === false && $r['data']['answer_text'] === '2번 2' && $r['data']['explanation'] === '기본 덧셈', $r);
+[$s, $r] = $ans($q1, ['given' => '1']);
+check('같은 퀴즈에서 같은 문제를 또 답하면 409', $s === 409, $r);
+[$s, $r] = $ans($q2, ['given' => 'O']);
+check('OX 오답 (정답 X)', $r['data']['is_correct'] === false, $r);
+[$s, $r] = $ans($q3, ['given' => ' 180 ']);
+check('단답 정답 (여러 정답 중 하나)', $r['data']['is_correct'] === true, $r);
+[$s, $r] = $ans($q4, ['given' => '잘 모르겠음']);
+check('서술형은 스스로 채점해야 함 → 422', $s === 422, $r);
+[$s, $r] = $ans($q4, ['given' => '잘 모르겠음', 'self_correct' => false]);
+check('서술형 스스로 채점(틀림)', $s === 200 && $r['data']['is_correct'] === false && $r['data']['answer'] === 'b^2-4ac', $r);
+[$s, $r] = $b->call('POST', "/quiz/attempts/$att/answer", ['question_id' => $q1, 'given' => '1']);
+check('남의 퀴즈에 답하기 → 404', $s === 404, $r);
+[$s, $r] = $ans($q5, ['self_correct' => true]);
+check('다른 사람이 아니라도 이 퀴즈에 없는 문제도 본인 문제면 채점됨(카드)', $s === 200 && $r['data']['is_correct'] === true, $r);
+[$s, $r] = $qz->call('POST', "/quiz/attempts/$att/finish");
+check('퀴즈 끝: 점수와 틀린 문제 목록', $s === 200 && $r['data']['total'] === 5 && $r['data']['correct'] === 2 && count($r['data']['wrong']) === 3 && isset($r['data']['wrong'][0]['answer_text']), $r);
+[$s, $r] = $ans($q3, ['given' => '180']);
+check('끝난 퀴즈에 답하면 409', $s === 409, $r);
+
+[$s, $r] = $qz->call('GET', '/wrong-notes');
+$wrongIds = array_column($r['data'], 'id');
+sort($wrongIds);
+$expectWrong = [$q1, $q2, $q4];
+sort($expectWrong);
+check('오답노트: 마지막 답이 틀린 문제 3개', $wrongIds === $expectWrong && $r['data'][0]['wrong_count'] === 1 && isset($r['data'][0]['answer_text']), $r);
+[$s, $r] = $qz->call('GET', '/reviews?scope=upcoming');
+$rv = array_values(array_filter($r['data'], fn($x) => str_starts_with($x['title'], '오답:')));
+check('틀린 문제는 내일 복습 목록에 오름 (3개, 중복 없음)', count($rv) === 3 && $rv[0]['next_review_date'] === ReviewControllerDate::plus($today, 1), $rv);
+
+[$s, $r] = $qz->call('GET', '/quiz/stats');
+$st = $r['data'];
+$uw = array_values(array_filter($st['units'], fn($u) => $u['unit_id'] === $qUnitWeak))[0];
+check('통계: 약한 단원 = 4문제 중 1개 정답(25%)', $uw['answered'] === 4 && $uw['correct'] === 1 && $uw['accuracy'] === 0.25 && $uw['weak'] === true, $uw);
+check('통계: 약한 단원 목록과 전체 정답률', count($st['weak_units']) === 1 && $st['weak_units'][0]['unit_id'] === $qUnitWeak && $st['overall']['answered'] === 5 && $st['overall']['correct'] === 2, $st['overall']);
+$sm = array_values(array_filter($st['subjects'], fn($x) => $x['subject_id'] === $qMath))[0];
+check('통계: 과목별 정답률', $sm['answered'] === 5 && $sm['correct'] === 2 && $sm['accuracy'] === 0.4, $sm);
+
+// 두 번째 시도: 오답노트 방식, 이번에는 다 맞힘 → 오답노트에서 빠지고 정답률이 올라감
+[$s, $r] = $qz->call('POST', '/quiz/start', ['mode' => 'wrong', 'subject_id' => $qMath]);
+check('오답노트 방식 퀴즈는 틀린 문제만', $s === 200 && count($r['data']['questions']) === 3, $r);
+$att2 = $r['data']['attempt_id'];
+$right = [$q1 => ['given' => '1'], $q2 => ['given' => 'X'], $q4 => ['given' => '판별식', 'self_correct' => true]];
+foreach ($r['data']['questions'] as $qq) {
+    $qz->call('POST', "/quiz/attempts/$att2/answer", ['question_id' => $qq['id']] + $right[$qq['id']]);
+}
+[$s, $r] = $qz->call('POST', "/quiz/attempts/$att2/finish");
+check('두 번째 퀴즈 전부 정답', $r['data']['total'] === 3 && $r['data']['correct'] === 3 && $r['data']['wrong'] === [], $r);
+[$s, $r] = $qz->call('GET', '/wrong-notes');
+check('다시 맞히면 오답노트에서 자동으로 빠짐', $r['data'] === [], $r);
+$st = $qz->call('GET', '/quiz/stats')[1]['data'];
+check('최근 답 기준이라 약한 단원에서 벗어남', $st['weak_units'] === [] && $st['overall']['correct'] === 5, $st['overall']);
+[$s, $r] = $qz->call('POST', '/quiz/start', ['mode' => 'wrong']);
+check('오답노트가 비면 퀴즈 시작 → 422', $s === 422, $r);
+[$s, $r] = $qz->call('POST', '/quiz/start', ['mode' => 'new', 'subject_id' => $qMath]);
+check('안 푼 문제만 → 없으면 422', $s === 422, $r);
+[$s, $r] = $qz->call('GET', '/quiz/attempts');
+check('퀴즈 기록 2건', count($r['data']) === 2 && $r['data'][0]['correct'] === 3, $r);
+
+// 시험 계획: 약한 단원을 ★ 로 (다시 약하게 만든 뒤 확인)
+[$s, $r] = $qz->call('POST', '/quiz/start', ['unit_id' => $qUnitWeak, 'count' => 4]);
+$att3 = $r['data']['attempt_id'];
+foreach ($r['data']['questions'] as $qq) {
+    $qz->call('POST', "/quiz/attempts/$att3/answer", ['question_id' => $qq['id'], 'given' => 'zzz', 'self_correct' => false]);
+}
+$qz->call('POST', "/quiz/attempts/$att3/finish");
+[$s, $r] = $qz->call('POST', '/exams', ['type' => 'midterm', 'title' => '약점 시험', 'start_date' => ReviewControllerDate::plus($today, 20), 'end_date' => ReviewControllerDate::plus($today, 22)]);
+$qExam = $r['data']['id'];
+[$s, $r] = $qz->call('POST', "/exams/$qExam/subjects", ['subject_id' => $qMath, 'exam_date' => ReviewControllerDate::plus($today, 20)]);
+$qEs = $r['data']['subjects'][0]['id'] ?? 0;
+[$s, $r] = $qz->call('POST', "/exam-subjects/$qEs/scopes", ['unit_ids' => [$qUnitWeak, $qUnitStrong]]);
+check('시험 범위로 단원 추가', $s === 200, $r);
+[$s, $r] = $qz->call('POST', "/exams/$qExam/plan/preview");
+$planTitles = array_column($r['data']['items'] ?? [], 'title');
+check('대비 계획: 약한 단원은 ★, 강한 단원은 ★ 없음', count(array_filter($planTitles, fn($t) => str_contains($t, '★1. 약한 단원'))) > 0 && count(array_filter($planTitles, fn($t) => str_contains($t, '★2. 강한'))) === 0, $planTitles);
+
+[$s, $r] = $qz->call('DELETE', "/questions/$q5");
+check('문제 삭제', $s === 200, $r);
+[$s, $r] = $qz->call('GET', '/reviews?scope=upcoming');
+check('문제를 지우면 그 문제의 복습 항목도 같이 삭제', count(array_filter($r['data'], fn($x) => str_contains($x['title'], '근의 공식'))) === 0, $r);
+
 echo "[알림 · 푸시 · 크론]\n";
 $pushLog = sys_get_temp_dir() . '/sp_push_test.log';
 @unlink($pushLog);

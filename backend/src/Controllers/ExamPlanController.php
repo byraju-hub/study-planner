@@ -10,6 +10,7 @@ use App\Core\Owned;
 use App\Core\Request;
 use App\Core\Session;
 use App\Services\PlanService;
+use App\Services\QuizStats;
 
 /** 시험 대비 계획: 미리 계산해 보여 주고(preview), 학생이 고친 내용을 확정하면(apply) 할 일로 만든다. */
 final class ExamPlanController
@@ -22,6 +23,7 @@ final class ExamPlanController
         Owned::find('sp_exams', $p['id'], $uid);
         $today = date('Y-m-d');
 
+        $weak = array_flip(QuizStats::weakUnitIds($uid));
         $subjects = [];
         foreach (ExamController::detail($uid, $p['id'])['subjects'] as $s) {
             $subjects[] = [
@@ -31,6 +33,7 @@ final class ExamPlanController
                 'exam_date' => $s['exam_date'],
                 'scopes' => array_map(static fn(array $sc): array => [
                     'label' => $sc['label'],
+                    'weak' => $sc['unit_id'] !== null && isset($weak[(int) $sc['unit_id']]),
                     'pages' => $sc['page_start'] !== null && $sc['page_end'] !== null ? (int) $sc['page_end'] - (int) $sc['page_start'] + 1 : null,
                 ], array_values(array_filter($s['scopes'], static fn(array $sc): bool => (int) $sc['progress'] < 100))),
             ];

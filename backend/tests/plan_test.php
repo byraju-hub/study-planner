@@ -5,6 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/../src/bootstrap.php';
 
 use App\Services\PlanService;
+use App\Services\QuizGrader;
 
 $fail = 0;
 $n = 0;
@@ -222,6 +223,49 @@ $toDer = static function (string $rs): string {
 };
 check('VAPID 서명이 공개키로 검증됨', strlen($raw) === 64 && openssl_verify($m[1] . '.' . $m[2], $toDer($raw), App\Services\WebPush::publicPem(App\Services\WebPush::unb64u($m[4])), OPENSSL_ALGO_SHA256) === 1);
 check('push 주소 검증: https 외부 도메인만', App\Services\WebPush::endpointAllowed('https://fcm.googleapis.com/fcm/send/x') && !App\Services\WebPush::endpointAllowed('http://fcm.googleapis.com/x') && !App\Services\WebPush::endpointAllowed('https://127.0.0.1/x') && !App\Services\WebPush::endpointAllowed('https://localhost/x') && !App\Services\WebPush::endpointAllowed('https://[::1]/x') && !App\Services\WebPush::endpointAllowed('https://intranet/x'));
+
+echo "[문제 형식·채점]\n";
+$thrown = static function (callable $f): ?string {
+    try {
+        $f();
+        return null;
+    } catch (\InvalidArgumentException $e) {
+        return $e->getMessage();
+    }
+};
+$mcq = QuizGrader::normalize(['type' => 'mcq', 'prompt' => ' 1+1은? ', 'choices' => ['1', '2', '3'], 'answer' => '1']);
+check('객관식 정규화 (앞뒤 공백 제거, 정답 번호 문자열)', $mcq['prompt'] === '1+1은?' && $mcq['answer'] === '1' && $mcq['choices'] === ['1', '2', '3'], $mcq);
+check('객관식: 보기 1개 · 빈 보기 · 범위 밖 정답은 거부', $thrown(fn() => QuizGrader::normalize(['type' => 'mcq', 'prompt' => 'x', 'choices' => ['a'], 'answer' => '0'])) !== null
+    && $thrown(fn() => QuizGrader::normalize(['type' => 'mcq', 'prompt' => 'x', 'choices' => ['a', ''], 'answer' => '0'])) !== null
+    && $thrown(fn() => QuizGrader::normalize(['type' => 'mcq', 'prompt' => 'x', 'choices' => ['a', 'b'], 'answer' => '2'])) !== null);
+check('객관식 채점', QuizGrader::grade($mcq, '1', null) === true && QuizGrader::grade($mcq, '0', null) === false && QuizGrader::grade($mcq, null, null) === false && QuizGrader::grade($mcq, 'abc', null) === false);
+$ox = QuizGrader::normalize(['type' => 'ox', 'prompt' => '지구는 둥글다', 'answer' => 'o']);
+check('OX: 소문자 입력도 O 로, 채점', $ox['answer'] === 'O' && QuizGrader::grade($ox, 'O', null) && !QuizGrader::grade($ox, 'X', null));
+check('OX: 다른 값은 거부', $thrown(fn() => QuizGrader::normalize(['type' => 'ox', 'prompt' => 'x', 'answer' => 'yes'])) !== null);
+$short = QuizGrader::normalize(['type' => 'short', 'prompt' => '수도는?', 'answer' => ' 서울 | Seoul |']);
+check('단답: 정답 여러 개 정리', $short['answer'] === '서울|Seoul', $short);
+check('단답 채점: 공백·대소문자·마침표 무시, 여러 정답 중 하나', QuizGrader::grade($short, ' 서 울 ', null) && QuizGrader::grade($short, 'SEOUL.', null) && !QuizGrader::grade($short, '부산', null) && !QuizGrader::grade($short, '', null) && !QuizGrader::grade($short, null, null));
+$essay = QuizGrader::normalize(['type' => 'essay', 'prompt' => '광합성을 설명하라', 'answer' => '빛에너지를...', 'explanation' => '  ']);
+check('서술형: 해설 빈칸은 null', $essay['explanation'] === null && $essay['choices'] === null);
+check('서술형·카드 채점은 학생 표시를 따름, 표시 없으면 거부', QuizGrader::grade($essay, null, true) === true && QuizGrader::grade($essay, '아무말', false) === false && $thrown(fn() => QuizGrader::grade($essay, 'x', null)) !== null);
+check('형식 오류: 없는 형식 · 빈 문제 · 빈 정답', $thrown(fn() => QuizGrader::normalize(['type' => 'x', 'prompt' => 'a', 'answer' => 'b'])) !== null
+    && $thrown(fn() => QuizGrader::normalize(['type' => 'card', 'prompt' => ' ', 'answer' => 'b'])) !== null
+    && $thrown(fn() => QuizGrader::normalize(['type' => 'card', 'prompt' => 'a', 'answer' => ' '])) !== null);
+check('정답 표시 글', QuizGrader::answerText($mcq + ['choices' => $mcq['choices']]) === '2번 2' && QuizGrader::answerText($short) === '서울 또는 Seoul');
+check('약한 단원 기준: 3문제 이상 · 정답률 60% 미만', !QuizGrader::isWeak(2, 0) && QuizGrader::isWeak(3, 1) && !QuizGrader::isWeak(5, 3) && QuizGrader::isWeak(5, 2) && !QuizGrader::isWeak(0, 0));
+
+echo "[계획: 약한 단원 가중]\n";
+$mk = static fn(bool $weak): array => [['id' => 1, 'subject_id' => 1, 'subject_name' => '수학', 'exam_date' => '2026-11-20', 'scopes' => [
+    ['label' => '다항식', 'pages' => 20, 'weak' => $weak], ['label' => '방정식', 'pages' => 20, 'weak' => false],
+]]];
+$plain = PlanService::generate($mk(false), '2026-10-27')['items'];
+$boosted = PlanService::generate($mk(true), '2026-10-27')['items'];
+$titles = fn(array $items, string $phase): string => implode(' / ', array_column(array_filter($items, fn($i) => $i['phase'] === $phase), 'title'));
+check('약하지 않으면 ★ 없음', !str_contains($titles($plain, 'practice'), '★') && !str_contains($titles($plain, 'review'), '★'));
+check('약한 범위는 문제풀이·총정리에서 ★ 표시', str_contains($titles($boosted, 'practice'), '★다항식') && str_contains($titles($boosted, 'review'), '★다항식'));
+check('1회독 단계에는 ★ 없음', !str_contains($titles($boosted, 'read'), '★'));
+$days = static fn(array $items, string $name): int => count(array_filter($items, fn($i) => $i['phase'] !== 'read' && str_contains($i['title'], $name)));
+check('약한 범위는 같은 분량이면 더 많은 날에 걸쳐 배정', $days($boosted, '다항식') > $days($boosted, '방정식') && $days($plain, '다항식') === $days($plain, '방정식'), [$days($boosted, '다항식'), $days($boosted, '방정식'), $days($plain, '다항식'), $days($plain, '방정식')]);
 
 echo "\n" . ($fail === 0 ? "전체 통과 ($n)" : "실패 $fail / $n") . "\n";
 exit($fail === 0 ? 0 : 1);
