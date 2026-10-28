@@ -20,5 +20,9 @@ return [
     // 웹에서 직접 접근할 수 없는 폴더 권장.
     'upload_dir' => __DIR__ . '/uploads',
     'upload_max_bytes' => 10 * 1024 * 1024,
+    // 알림 생성을 외부 크론이 불러 주는 주소의 비밀 토큰: /sp/api/cron/notify?token=...  (비워 두면 꺼짐)
+    'cron_token' => '',
+    // 웹 푸시(휴대폰·브라우저 알림). `php scripts/vapid-keys.php` 로 만든 값을 넣는다. 없으면 앱 안 알림함만 쓴다.
+    // 'vapid' => ['subject' => 'mailto:본인이메일', 'public' => '...', 'private_pem' => '...'],
     'debug' => false,
 ];

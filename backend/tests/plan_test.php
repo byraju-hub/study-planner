@@ -148,5 +148,80 @@ foreach (array_keys(AssessmentPlan::KINDS) as $k) {
 }
 check('모든 종류: 3단계 이상, 날짜 오름차순, 오늘~마감일', $allKinds);
 
+echo "[알림 계획]\n";
+$base = ['today' => '2026-10-27', 'time' => '08:00', 'settings' => [], 'tasks' => [], 'reviews' => [], 'exams' => [], 'assessments' => []];
+$keys = static fn(array $in): array => array_column(App\Services\NotificationPlanner::plan($in), 'dedupe_key');
+check('데이터가 없으면 알림 없음', $keys($base) === []);
+
+$withTasks = $base + [];
+$withTasks['tasks'] = [['title' => '수학 문제집', 'done' => false, 'est_minutes' => 60], ['title' => '영어 단어', 'done' => true, 'est_minutes' => 30]];
+$p = App\Services\NotificationPlanner::plan($withTasks);
+check('아침 시각 이후 오늘 할 일 요약', count($p) === 1 && $p[0]['dedupe_key'] === 'morning:2026-10-27' && str_contains($p[0]['title'], '2개') && str_contains((string) $p[0]['body'], '예상 1시간'), $p);
+check('아침 시각 전에는 아직 안 만듦', $keys(['time' => '07:00'] + $withTasks) === []);
+check('저녁 시각 전에는 남은 할 일 알림 없음', !in_array('evening:2026-10-27', $keys($withTasks), true));
+check('저녁에 남은 할 일이 있으면 알림', in_array('evening:2026-10-27', $keys(['time' => '21:30'] + $withTasks), true));
+$allDone = $withTasks;
+$allDone['tasks'][0]['done'] = true;
+check('다 끝냈으면 저녁 알림 없음', !in_array('evening:2026-10-27', $keys(['time' => '21:30'] + $allDone), true));
+check('저녁 알림을 끌 수 있음(null)', !in_array('evening:2026-10-27', $keys(['time' => '22:00', 'settings' => ['evening_time' => null]] + $withTasks), true));
+check('할 일 알림을 끌 수 있음', $keys(['settings' => ['tasks_on' => false]] + $withTasks) === []);
+check('내가 정한 아침 시각을 따름', $keys(['time' => '08:00', 'settings' => ['morning_time' => '09:00']] + $withTasks) === []);
+
+$rv = ['reviews' => ['수학 1단원', '영어 2과', '과학', '국어']] + $base;
+$p = App\Services\NotificationPlanner::plan($rv);
+check('복습 알림: 개수와 앞 3개 + 외', $p[0]['dedupe_key'] === 'review:2026-10-27' && str_contains($p[0]['title'], '4개') && str_contains((string) $p[0]['body'], '외') && !str_contains((string) $p[0]['body'], '국어'), $p);
+
+$ex = static fn(string $start): array => ['exams' => [['id' => 5, 'title' => '중간고사', 'start_date' => $start]]] + $base;
+check('시험 D-7/3/1/0 에 알림', $keys($ex('2026-11-03')) === ['exam:5:7'] && $keys($ex('2026-10-30')) === ['exam:5:3'] && $keys($ex('2026-10-28')) === ['exam:5:1'] && $keys($ex('2026-10-27')) === ['exam:5:0']);
+check('시험 D-5·D-2 에는 알림 없음', $keys($ex('2026-11-01')) === [] && $keys($ex('2026-10-29')) === []);
+check('지난 시험은 알림 없음', $keys($ex('2026-10-20')) === []);
+check('시험 D-day 문구', App\Services\NotificationPlanner::plan($ex('2026-10-30'))[0]['title'] === '중간고사 D-3');
+
+$as = static fn(string $due, string $status = 'planned'): array => ['assessments' => [['id' => 9, 'title' => '과학 보고서', 'due_date' => $due, 'status' => $status]]] + $base;
+check('수행평가 마감 D-3/1/0 알림', $keys($as('2026-10-30')) === ['assess:9:3'] && $keys($as('2026-10-28')) === ['assess:9:1'] && $keys($as('2026-10-27')) === ['assess:9:0']);
+check('수행평가 마감 D-2 는 알림 없음', $keys($as('2026-10-29')) === []);
+check('제출·채점 끝난 수행평가는 알림 없음', $keys($as('2026-10-28', 'submitted')) === [] && $keys($as('2026-10-28', 'graded')) === []);
+check('마감 지난 미제출은 하루 한 번(3일까지)', $keys($as('2026-10-25')) === ['assess:9:late:2026-10-27'] && $keys($as('2026-10-20')) === []);
+check('같은 날 다시 계산해도 같은 key (중복 방지)', $keys($as('2026-10-28')) === $keys($as('2026-10-28')));
+check('날짜가 바뀌면 key 도 바뀜', $keys(['today' => '2026-10-28'] + $withTasks) === ['morning:2026-10-28']);
+
+echo "[웹 푸시 암호화]\n";
+$ua = openssl_pkey_new(['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC]);
+$auth = random_bytes(16);
+$msg = json_encode(['title' => '알림', 'body' => '내용'], JSON_UNESCAPED_UNICODE);
+$bodyBytes = App\Services\WebPush::encrypt($msg, App\Services\WebPush::publicPoint($ua), $auth);
+// 받는 쪽 입장에서 RFC 8291 대로 풀어 본다.
+$salt = substr($bodyBytes, 0, 16);
+$idlen = ord($bodyBytes[20]);
+$asPub = substr($bodyBytes, 21, $idlen);
+$cipher = substr($bodyBytes, 21 + $idlen);
+$secret = openssl_pkey_derive(App\Services\WebPush::publicPem($asPub), $ua, 32);
+$ikm = hash_hkdf('sha256', $secret, 32, "WebPush: info\0" . App\Services\WebPush::publicPoint($ua) . $asPub, $auth);
+$cek = hash_hkdf('sha256', $ikm, 16, "Content-Encoding: aes128gcm\0", $salt);
+$nonce = hash_hkdf('sha256', $ikm, 12, "Content-Encoding: nonce\0", $salt);
+$plain = openssl_decrypt(substr($cipher, 0, -16), 'aes-128-gcm', $cek, OPENSSL_RAW_DATA, $nonce, substr($cipher, -16));
+check('암호화한 본문을 받는 쪽에서 복호화 (끝 구분자 0x02)', $plain === $msg . "\x02", $plain);
+check('헤더: record size 4096, 키 길이 65', unpack('N', substr($bodyBytes, 16, 4))[1] === 4096 && $idlen === 65);
+check('엉뚱한 auth 비밀로는 복호화 실패', openssl_decrypt(substr($cipher, 0, -16), 'aes-128-gcm', hash_hkdf('sha256', hash_hkdf('sha256', $secret, 32, "WebPush: info\0" . App\Services\WebPush::publicPoint($ua) . $asPub, random_bytes(16)), 16, "Content-Encoding: aes128gcm\0", $salt), OPENSSL_RAW_DATA, $nonce, substr($cipher, -16)) === false);
+
+$v = App\Services\WebPush::generateVapidKeys();
+$hdr = App\Services\WebPush::vapidAuthorization('https://fcm.googleapis.com/fcm/send/abc', $v, 1900000000);
+preg_match('/^vapid t=([^.]+)\.([^.]+)\.([^,]+), k=(.+)$/', $hdr, $m);
+$claims = json_decode(App\Services\WebPush::unb64u($m[2]), true);
+check('VAPID: aud 는 푸시 서비스 origin, exp 는 12시간 뒤', $claims['aud'] === 'https://fcm.googleapis.com' && $claims['exp'] === 1900043200, $claims);
+$raw = App\Services\WebPush::unb64u($m[3]);
+$toDer = static function (string $rs): string {
+    $enc = static function (string $x): string {
+        $t = ltrim($x, "\0");
+        return $t === '' ? "\0" : ((ord($t[0]) & 0x80 ? "\0" : '') . $t);
+    };
+    $r = $enc(substr($rs, 0, 32));
+    $s = $enc(substr($rs, 32));
+    $body = "\x02" . chr(strlen($r)) . $r . "\x02" . chr(strlen($s)) . $s;
+    return "\x30" . chr(strlen($body)) . $body;
+};
+check('VAPID 서명이 공개키로 검증됨', strlen($raw) === 64 && openssl_verify($m[1] . '.' . $m[2], $toDer($raw), App\Services\WebPush::publicPem(App\Services\WebPush::unb64u($m[4])), OPENSSL_ALGO_SHA256) === 1);
+check('push 주소 검증: https 외부 도메인만', App\Services\WebPush::endpointAllowed('https://fcm.googleapis.com/fcm/send/x') && !App\Services\WebPush::endpointAllowed('http://fcm.googleapis.com/x') && !App\Services\WebPush::endpointAllowed('https://127.0.0.1/x') && !App\Services\WebPush::endpointAllowed('https://localhost/x') && !App\Services\WebPush::endpointAllowed('https://[::1]/x') && !App\Services\WebPush::endpointAllowed('https://intranet/x'));
+
 echo "\n" . ($fail === 0 ? "전체 통과 ($n)" : "실패 $fail / $n") . "\n";
 exit($fail === 0 ? 0 : 1);

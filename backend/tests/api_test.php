@@ -19,6 +19,7 @@ if (is_file($testConfig)) {
         $pdo->exec('DELETE FROM sp_login_attempts');
     }
 }
+require __DIR__ . '/../src/bootstrap.php';
 $failures = 0;
 $checks = 0;
 
@@ -686,6 +687,100 @@ check('수행평가 삭제', $s === 200, $r);
 check('삭제하면 단계 할 일도 모두 사라짐', count($assessTasks($c, $today, $d10)) === 0, count($assessTasks($c, $today, $d10)));
 [$s, $r] = $c->call('GET', "/assessments/$asId");
 check('삭제된 수행평가 → 404', $s === 404, $r);
+
+echo "[알림 · 푸시 · 크론]\n";
+$pushLog = sys_get_temp_dir() . '/sp_push_test.log';
+@unlink($pushLog);
+$fake = proc_open(['php', '-S', '127.0.0.1:8099', __DIR__ . '/fake_push_server.php'], [['file', '/dev/null', 'r'], ['file', '/dev/null', 'w'], ['file', '/dev/null', 'w']], $pipes, null, ['PUSH_LOG' => $pushLog, 'PATH' => getenv('PATH')]);
+usleep(400000);
+
+$n = new Client($base);
+$n->signup("nt$run");
+[$s, $r] = $n->call('GET', '/notifications');
+check('처음엔 알림 없음', $s === 200 && $r['data']['notifications'] === [] && $r['data']['unread'] === 0, $r);
+[$s, $r] = $n->call('GET', '/notifications/settings');
+check('기본 알림 설정 + 푸시 사용 가능 + 공개키', $s === 200 && $r['data']['settings']['morning_time'] === '07:30' && $r['data']['push']['available'] === true && strlen($r['data']['push']['public_key']) > 80, $r);
+[$s, $r] = $n->call('PUT', '/notifications/settings', ['tasks_on' => true, 'review_on' => true, 'exam_on' => true, 'assessment_on' => true, 'morning_time' => '25:00', 'evening_time' => null]);
+check('시각 형식 오류 → 422', $s === 422, $r);
+[$s, $r] = $n->call('PUT', '/notifications/settings', ['tasks_on' => true, 'review_on' => false, 'exam_on' => true, 'assessment_on' => true, 'morning_time' => '00:00', 'evening_time' => null]);
+check('설정 저장 (아침 00:00, 저녁 끔, 복습 끔)', $s === 200 && $r['data']['settings']['morning_time'] === '00:00' && $r['data']['settings']['evening_time'] === null && $r['data']['settings']['review_on'] === false, $r);
+
+$n->call('POST', '/tasks', ['title' => '알림용 할 일', 'task_date' => $today, 'est_minutes' => 45]);
+[$s, $r] = $n->call('GET', '/notifications');
+check('오늘 할 일 요약 알림 생성', count($r['data']['notifications']) === 1 && str_contains($r['data']['notifications'][0]['title'], '오늘 할 일 1개') && $r['data']['unread'] === 1, $r);
+[$s, $r2] = $n->call('GET', '/notifications');
+check('다시 불러도 중복 생성 안 됨', count($r2['data']['notifications']) === 1, $r2);
+$nid = $r['data']['notifications'][0]['id'];
+
+// 푸시 구독: 받는 쪽 키를 직접 만들어 구독하고, 가짜 푸시 서비스가 받은 본문을 풀어 본다.
+$ua = openssl_pkey_new(['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC]);
+$authSecret = random_bytes(16);
+$sub = ['endpoint' => 'http://127.0.0.1:8099/push/ok', 'keys' => ['p256dh' => App\Services\WebPush::b64u(App\Services\WebPush::publicPoint($ua)), 'auth' => App\Services\WebPush::b64u($authSecret)]];
+[$s, $r] = $n->call('POST', '/push/subscribe', ['endpoint' => $sub['endpoint'], 'keys' => ['p256dh' => 'abc', 'auth' => 'def']]);
+check('푸시 키 형식 오류 → 422', $s === 422, $r);
+[$s, $r] = $n->call('POST', '/push/subscribe', $sub);
+check('푸시 구독', $s === 200, $r);
+[$s, $r] = $n->call('POST', '/push/subscribe', $sub);
+[$s, $r] = $n->call('GET', '/notifications/settings');
+check('같은 주소로 다시 구독해도 한 건', $r['data']['push']['subscriptions'] === 1, $r);
+
+$gone = $sub;
+$gone['endpoint'] = 'http://127.0.0.1:8099/push/gone';
+$n->call('POST', '/push/subscribe', $gone);
+
+$n->call('POST', '/exams', ['type' => 'midterm', 'title' => '푸시 시험', 'start_date' => ReviewControllerDate::plus($today, 1), 'end_date' => ReviewControllerDate::plus($today, 3)]);
+[$s, $r] = $n->call('GET', '/notifications');
+check('시험 D-1 알림 생성', $r['data']['notifications'][0]['title'] === '푸시 시험 D-1', $r['data']['notifications'][0] ?? null);
+
+$lines = is_file($pushLog) ? file($pushLog, FILE_IGNORE_NEW_LINES) : [];
+$okReq = null;
+foreach ($lines as $line) {
+    $e = json_decode($line, true);
+    if ($e['path'] === '/push/ok') {
+        $okReq = $e;
+    }
+}
+check('가짜 푸시 서비스가 요청을 받음 (VAPID 헤더·aes128gcm)', $okReq !== null && str_starts_with($okReq['authorization'], 'vapid t=') && $okReq['encoding'] === 'aes128gcm' && $okReq['ttl'] === '86400', $okReq);
+if ($okReq !== null) {
+    $bodyBytes = base64_decode($okReq['body']);
+    $salt = substr($bodyBytes, 0, 16);
+    $idlen = ord($bodyBytes[20]);
+    $asPub = substr($bodyBytes, 21, $idlen);
+    $cipher = substr($bodyBytes, 21 + $idlen);
+    $secret = openssl_pkey_derive(App\Services\WebPush::publicPem($asPub), $ua, 32);
+    $ikm = hash_hkdf('sha256', $secret, 32, "WebPush: info\0" . App\Services\WebPush::publicPoint($ua) . $asPub, $authSecret);
+    $plain = openssl_decrypt(substr($cipher, 0, -16), 'aes-128-gcm', hash_hkdf('sha256', $ikm, 16, "Content-Encoding: aes128gcm\0", $salt), OPENSSL_RAW_DATA, hash_hkdf('sha256', $ikm, 12, "Content-Encoding: nonce\0", $salt), substr($cipher, -16));
+    $msg = json_decode(rtrim((string) $plain, "\x02"), true);
+    check('푸시 본문을 풀면 알림 제목·링크', ($msg['title'] ?? '') === '푸시 시험 D-1' && ($msg['link'] ?? '') === '/exams', $msg);
+}
+check('푸시는 새 알림마다 한 번만', count(array_filter($lines, fn($l) => json_decode($l, true)['path'] === '/push/ok')) === 1, count($lines));
+[$s, $r] = $n->call('GET', '/notifications/settings');
+check('푸시 서비스가 410 을 돌려준 구독은 자동 삭제', $r['data']['push']['subscriptions'] === 1, $r['data']['push']);
+[$s, $r] = $n->call('POST', '/push/unsubscribe', ['endpoint' => $sub['endpoint']]);
+[$s, $r] = $n->call('GET', '/notifications/settings');
+check('구독 해지', $r['data']['push']['subscriptions'] === 0, $r['data']['push']);
+
+[$s, $r] = $b->call('POST', "/notifications/$nid/read");
+check('남의 알림 읽음 처리 → 404', $s === 404, $r);
+[$s, $r] = $n->call('POST', "/notifications/$nid/read");
+[$s, $r] = $n->call('GET', '/notifications');
+check('읽음 처리하면 안 읽은 수 감소', $r['data']['unread'] === 1, $r['data']['unread']);
+$n->call('POST', '/notifications/read-all');
+[$s, $r] = $n->call('GET', '/notifications');
+check('모두 읽음', $r['data']['unread'] === 0, $r['data']['unread']);
+[$s, $r] = $b->call('GET', '/notifications');
+check('다른 회원의 알림은 보이지 않음', !in_array('푸시 시험 D-1', array_column($r['data']['notifications'], 'title'), true), $r);
+
+[$s, $r] = (new Client($base))->call('GET', '/cron/notify');
+check('크론: 토큰 없으면 403', $s === 403, $r);
+[$s, $r] = (new Client($base))->call('GET', '/cron/notify?token=wrong');
+check('크론: 틀린 토큰 → 403', $s === 403, $r);
+[$s, $r] = (new Client($base))->call('GET', '/cron/notify?token=test-cron-token');
+check('크론: 올바른 토큰이면 전체 회원 처리', $s === 200 && $r['data']['users'] >= 2, $r);
+
+proc_terminate($fake);
+proc_close($fake);
+@unlink($pushLog);
 
 echo "[관리자 · 가입 방식 · 회원 탈퇴]\n";
 $adm = new Client($base);

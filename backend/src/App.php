@@ -11,6 +11,7 @@ use App\Controllers\ExamPlanController;
 use App\Controllers\ExamSubjectController;
 use App\Controllers\JournalController;
 use App\Controllers\MaterialController;
+use App\Controllers\NotificationController;
 use App\Controllers\ReviewController;
 use App\Controllers\SessionController;
 use App\Controllers\StudyController;
@@ -71,6 +72,15 @@ final class App
         $r->add('POST', '/auth/logout', [AuthController::class, 'logout'], false);
         $r->add('PUT', '/auth/password', [AuthController::class, 'changePassword']);
         $r->add('DELETE', '/auth/account', [AuthController::class, 'deleteAccount']);
+
+        $r->add('GET', '/notifications', [NotificationController::class, 'index']);
+        $r->add('POST', '/notifications/read-all', [NotificationController::class, 'readAll']);
+        $r->add('POST', '/notifications/{id}/read', [NotificationController::class, 'read']);
+        $r->add('GET', '/notifications/settings', [NotificationController::class, 'settings']);
+        $r->add('PUT', '/notifications/settings', [NotificationController::class, 'updateSettings']);
+        $r->add('POST', '/push/subscribe', [NotificationController::class, 'subscribe']);
+        $r->add('POST', '/push/unsubscribe', [NotificationController::class, 'unsubscribe']);
+        $r->add('GET', '/cron/notify', [NotificationController::class, 'cron'], false);
 
         $r->add('GET', '/admin/users', [AdminController::class, 'users']);
         $r->add('GET', '/admin/stats', [AdminController::class, 'stats']);
