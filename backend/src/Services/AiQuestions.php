@@ -6,6 +6,7 @@ namespace App\Services;
 use App\Core\Config;
 use App\Core\Http;
 use App\Core\HttpException;
+use App\Core\Settings;
 
 /** Claude Messages API 로 학생이 정리한 노트에서 문제 후보를 만든다. 후보는 학생이 확인한 뒤에만 저장된다. */
 final class AiQuestions
@@ -24,6 +25,13 @@ final class AiQuestions
 - explanation 에는 한두 문장으로 왜 그런지 쓴다.
 - 한국어로 쓴다.
 TXT;
+
+    /** 관리자 화면에서 고를 수 있는 모델 (키 => 표시 이름) */
+    public const MODELS = [
+        'claude-haiku-5-5' => 'Haiku 5.5 (빠르고 저렴)',
+        'claude-sonnet-5-5' => 'Sonnet 5.5 (균형)',
+        'claude-opus-5-5' => 'Opus 5.5 (가장 정확, 비쌈)',
+    ];
 
     public static function available(): bool
     {
@@ -116,7 +124,12 @@ TXT;
     public static function generate(string $note, int $count, array $types): array
     {
         $base = rtrim((string) Config::get('anthropic.base_url', 'https://api.anthropic.com'), '/');
-        $res = Http::json('POST', $base . '/v1/messages', self::buildRequest($note, $count, $types), [
+        $request = self::buildRequest($note, $count, $types);
+        $chosen = Settings::get('ai_model');
+        if (isset(self::MODELS[$chosen])) {
+            $request['model'] = $chosen;
+        }
+        $res = Http::json('POST', $base . '/v1/messages', $request, [
             'x-api-key: ' . Config::get('anthropic.api_key'),
             'anthropic-version: 2023-06-01',
         ], 90);

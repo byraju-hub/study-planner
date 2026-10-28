@@ -5,6 +5,11 @@
 	import { api, get, put } from '#lib/api.js';
 
 	const STATUS = { active: '사용 중', pending: '승인 대기', blocked: '차단됨' };
+	const AI_MODELS = {
+		'claude-haiku-5-5': 'Haiku 5.5 (빠르고 저렴, 기본)',
+		'claude-sonnet-5-5': 'Sonnet 5.5 (균형)',
+		'claude-opus-5-5': 'Opus 5.5 (가장 정확, 비쌈)'
+	};
 	const MODES = {
 		open: '누구나 바로 가입',
 		approval: '관리자 승인 후 사용',
@@ -21,7 +26,7 @@
 
 	let users = $state([]);
 	let stats = $state(null);
-	let settings = $state({ signup_mode: 'open', ai_enabled: '1' });
+	let settings = $state({ signup_mode: 'open', ai_enabled: '1', ai_model: '' });
 	let log = $state([]);
 	let filter = $state('');
 	let q = $state('');
@@ -138,6 +143,13 @@
 				<input type="checkbox" checked={settings.ai_enabled === '1'} onchange={(e) => saveSettings({ ai_enabled: e.currentTarget.checked })} />
 				<span>AI 문제 만들기 허용</span>
 			</label>
+			<div class="field">
+				<label for="aimodel">AI 모델</label>
+				<select id="aimodel" class="input" value={settings.ai_model || 'claude-haiku-5-5'} onchange={(e) => saveSettings({ ai_model: e.currentTarget.value })}>
+					{#each Object.entries(AI_MODELS) as [v, label] (v)}<option value={v}>{label}</option>{/each}
+				</select>
+				<span class="hint">모델이 정확할수록 비용이 올라가요. 하루 사용 한도는 서버 설정(daily_limit)을 따라요.</span>
+			</div>
 		</section>
 
 		<section class="card stack">

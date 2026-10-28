@@ -1158,6 +1158,24 @@ check('관리자가 AI 를 끄면 사용 불가', $r['data']['ai']['available'] 
 check('AI 꺼진 상태에서 호출 → 503', $s === 503, $r);
 $adm->call('PUT', '/admin/settings', ['ai_enabled' => true]);
 
+[$s, $r] = $adm->call('PUT', '/admin/settings', ['ai_model' => 'gpt-4']);
+check('AI 모델: 허용 목록에 없으면 422', $s === 422, $r);
+[$s, $r] = $adm->call('PUT', '/admin/settings', ['ai_model' => 'claude-sonnet-5-5']);
+check('관리자가 AI 모델 변경', $s === 200 && $r['data']['settings']['ai_model'] === 'claude-sonnet-5-5', $r);
+$exm = new Client($base);
+$exm->signup("exm$run");
+$exm->call('POST', '/ai/consent', ['agree' => true]);
+$exm->call('POST', '/ai/questions', ['text' => $note]);
+$modelSent = null;
+foreach (file($extLog, FILE_IGNORE_NEW_LINES) as $line) {
+    $e = json_decode($line, true);
+    if (str_ends_with($e['path'], '/v1/messages')) {
+        $modelSent = $e['body']['model'] ?? null;
+    }
+}
+check('바꾼 모델이 Claude 요청에 쓰임', $modelSent === 'claude-sonnet-5-5', $modelSent);
+$adm->call('PUT', '/admin/settings', ['ai_model' => 'claude-haiku-5-5']);
+
 proc_terminate($ext);
 proc_close($ext);
 @unlink($extLog);

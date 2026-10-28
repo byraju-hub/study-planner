@@ -9,6 +9,7 @@ final class Settings
     public const DEFAULTS = [
         'signup_mode' => 'open',   // open | approval | closed
         'ai_enabled' => '1',
+        'ai_model' => '',          // 비우면 config 의 anthropic.model, 그것도 없으면 Haiku
     ];
 
     public static function get(string $name): string

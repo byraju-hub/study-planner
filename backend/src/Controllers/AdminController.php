@@ -10,6 +10,7 @@ use App\Core\Input;
 use App\Core\Request;
 use App\Core\Session;
 use App\Core\Settings;
+use App\Services\AiQuestions;
 use App\Services\UserService;
 
 /** 최고 관리자 전용. 회원 관리만 하고, 회원의 공부 내용·업로드 자료는 보여 주지 않는다. */
@@ -122,6 +123,9 @@ final class AdminController
         }
         if (array_key_exists('ai_enabled', $b)) {
             $changes['ai_enabled'] = $b['ai_enabled'] ? '1' : '0';
+        }
+        if (array_key_exists('ai_model', $b)) {
+            $changes['ai_model'] = Input::enum($b, 'ai_model', array_keys(AiQuestions::MODELS), 'AI 모델');
         }
         foreach ($changes as $name => $value) {
             Settings::set($name, $value);
