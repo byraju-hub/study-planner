@@ -101,9 +101,15 @@
 	{#if error}<p class="alert" role="alert">{error}</p>{/if}
 	{#if msg}<p class="chip" role="status">{msg}</p>{/if}
 
-	<form class="card stack" onsubmit={save}>
-		<h2>{editingId ? '문제 수정' : '새 문제'}</h2>
+	<div class="card stack">
+		<h2>문제를 만들 범위</h2>
 		<UnitPicker {subjects} bind:subjectId bind:unitId />
+	</div>
+
+	<AiQuestions {subjectId} {unitId} onsaved={load} />
+
+	<form class="card stack" onsubmit={save}>
+		<h2>{editingId ? '문제 수정' : '새 문제 직접 만들기'}</h2>
 		<div class="types" role="radiogroup" aria-label="문제 형식">
 			{#each Object.entries(QUESTION_TYPES) as [t, label] (t)}
 				<button type="button" class="type" class:on={f.type === t} role="radio" aria-checked={f.type === t} onclick={() => setType(t)}>{label}</button>
@@ -153,8 +159,6 @@
 		</div>
 		<p class="hint">교재 본문이나 문제집 문제를 그대로 옮기기보다, 내가 이해한 내용으로 문제를 만들어 보세요. 만든 문제는 나만 볼 수 있어요.</p>
 	</form>
-
-	<AiQuestions {subjectId} {unitId} onsaved={load} />
 
 	<section class="stack">
 		<h2>내 문제 {questions.length}개</h2>
