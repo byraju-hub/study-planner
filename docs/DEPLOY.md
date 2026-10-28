@@ -58,7 +58,7 @@ phpMyAdmin → 내 DB 선택 → 가져오기 → `dist/schema.sql` 실행. 테�
    - `admin_login_id`: 최고 관리자 아이디. **이 아이디로 가입·로그인**하면 왼쪽 메뉴에 "관리"가 생긴다. 먼저 이 아이디를 안 쓰는 사람이 가입해 버리지 않도록, 설정 직후 바로 가입한다.
    - `cron_token`: 임의의 긴 문자열. 외부 크론(또는 호스팅 크론)이 `https://도메인/sp/api/cron/notify?token=값`을 하루 여러 번(예: 30분마다) 호출하면 앱을 안 열어도 푸시가 간다. 없으면 앱을 열 때만 알림이 만들어진다.
    - `vapid`: 휴대폰·브라우저 푸시. 개발 PC에서 `php scripts/vapid-keys.php`를 한 번 실행해 나온 블록을 붙인다. 키를 바꾸면 기존 구독이 모두 끊긴다.
-   - `aladin.ttb_key`, `neis.key`, `anthropic.api_key`(+`model`, `daily_limit`): 각 서비스에서 발급. **키는 저장소에 올리지 않는다.**
+   - `yes24.api_key`, `neis.key`, `anthropic.api_key`(+`model`, `daily_limit`): 각 서비스에서 발급. **키는 저장소에 올리지 않는다.**
 4. 호스팅 PHP에 `curl`, `openssl` 확장이 켜져 있어야 외부 연동·푸시가 된다.
 5. 확인: 관리자 계정으로 "관리" 화면이 열리는지, 새 계정으로 알림 종 아이콘·퀴즈 화면이 열리는지.
 6. 실제 외부 서비스와 맞는지는 아직 확인하지 못했다. `docs/PROGRESS.md`의 "실제 서비스로 확인하지 못한 것"을 먼저 읽는다.

@@ -1046,7 +1046,7 @@ check('관리자가 회원 삭제', $s === 200, $r);
 [$s, $r] = $adm->call('GET', '/admin/users?q=pd' . $run);
 check('삭제된 회원은 목록에서 사라짐', count($r['data']['users']) === 0, $r);
 
-echo "[외부 연동: 알라딘 · 나이스 · AI]\n";
+echo "[외부 연동: YES24 · 나이스 · AI]\n";
 $extLog = sys_get_temp_dir() . '/sp_ext_test.log';
 @unlink($extLog);
 $ext = proc_open(['php', '-S', '127.0.0.1:8098', __DIR__ . '/fake_external_server.php'], [['file', '/dev/null', 'r'], ['file', '/dev/null', 'w'], ['file', '/dev/null', 'w']], $pipes2, null, ['EXT_LOG' => $extLog, 'PATH' => getenv('PATH')]);
@@ -1055,7 +1055,7 @@ usleep(400000);
 $ex = new Client($base);
 $ex->signup("ex$run");
 [$s, $r] = $ex->call('GET', '/integrations');
-check('연동 상태: 알라딘·나이스 설정됨, AI 동의 전', $s === 200 && $r['data']['aladin'] === true && $r['data']['neis'] === true && $r['data']['ai']['available'] === true && $r['data']['ai']['consent'] === false && $r['data']['ai']['remaining_today'] === 3, $r);
+check('연동 상태: YES24·나이스 설정됨, AI 동의 전', $s === 200 && $r['data']['yes24'] === true && $r['data']['neis'] === true && $r['data']['ai']['available'] === true && $r['data']['ai']['consent'] === false && $r['data']['ai']['remaining_today'] === 3, $r);
 [$s, $r] = (new Client($base))->call('GET', '/catalog/books?q=' . rawurlencode('수학'));
 check('비로그인 연동 호출 → 401', $s === 401, $r);
 
@@ -1070,6 +1070,16 @@ check('목차 가져오기 → 단원 후보', $s === 200 && count($r['data']['i
 $tocItems = $r['data']['items'];
 [$s, $r] = $ex->call('GET', '/catalog/toc?isbn=9780000000000');
 check('목차가 없는 책은 empty 표시', $s === 200 && $r['data']['empty'] === true && $r['data']['items'] === [], $r);
+$y24 = ['search' => null, 'toc' => null];
+foreach (file($extLog, FILE_IGNORE_NEW_LINES) as $line) {
+    $e = json_decode($line, true);
+    if (str_ends_with($e['path'], '/v1/goods/itemList')) {
+        $y24['search'] = $e;
+    } elseif (str_ends_with($e['path'], '/v1/goods/content') && $e['query']['query'] === '9781234567890') {
+        $y24['toc'] = $e;
+    }
+}
+check('YES24 요청: X-Api-Key 헤더, 도서(BOOK) 검색, ISBN13 목차 조회', ($y24['search']['key'] ?? '') === 'test-yes24' && ($y24['search']['query']['category'] ?? '') === 'BOOK' && ($y24['search']['query']['query'] ?? '') === '수학 개념서' && ($y24['toc']['query']['searchType'] ?? '') === 'ISBN13', $y24);
 
 [$s, $r] = $ex->call('GET', '/subjects');
 $exSub = $r['data'][0]['id'];

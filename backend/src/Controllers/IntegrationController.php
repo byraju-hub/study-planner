@@ -12,12 +12,12 @@ use App\Core\Request;
 use App\Core\Session;
 use App\Core\Settings;
 use App\Services\AiQuestions;
-use App\Services\Aladin;
+use App\Services\Yes24;
 use App\Services\Neis;
 use App\Services\QuizGrader;
 use App\Services\TocParser;
 
-/** 외부 연동: 서점 목차(알라딘), 학교·시간표(나이스), AI 문제 후보. 모두 학생이 확인한 뒤에만 저장한다. */
+/** 외부 연동: 서점 목차(YES24), 학교·시간표(나이스), AI 문제 후보. 모두 학생이 확인한 뒤에만 저장한다. */
 final class IntegrationController
 {
     public static function status(Request $req): array
@@ -25,7 +25,7 @@ final class IntegrationController
         $uid = Session::requireUser();
         $consent = Db::one('SELECT ai_consent_at FROM sp_users WHERE id = ?', [$uid])['ai_consent_at'];
         return [
-            'aladin' => Aladin::configured(),
+            'yes24' => Yes24::configured(),
             'neis' => Neis::configured(),
             'ai' => [
                 'available' => AiQuestions::available() && Settings::get('ai_enabled') === '1',
@@ -42,7 +42,7 @@ final class IntegrationController
         if (mb_strlen($q) < 2) {
             throw new HttpException(422, 'validation', '검색어를 2글자 이상 입력해 주세요.', 'q');
         }
-        return Aladin::search($q);
+        return Yes24::search($q);
     }
 
     /** 목차를 가져와 단원 후보로 나눠 보여 준다. 저장은 importToc 에서. */
@@ -53,7 +53,7 @@ final class IntegrationController
         if (!preg_match('/^\d{13}$/', $isbn)) {
             throw new HttpException(422, 'validation', 'ISBN13 형식이 올바르지 않아요.', 'isbn');
         }
-        $raw = Aladin::toc($isbn);
+        $raw = Yes24::toc($isbn);
         return ['items' => TocParser::parse($raw), 'empty' => trim($raw) === ''];
     }
 

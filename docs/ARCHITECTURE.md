@@ -194,8 +194,8 @@ study-planner/
 | 학교 검색 | 나이스 교육정보 개방 포털(open.neis.go.kr) Open API `schoolInfo` (학교명, 시도교육청코드, 표준학교코드) | 서버(PHP)에서 호출, 무료 인증키 | 공식 제공 |
 | 학급 시간표 | 나이스 Open API 고등학교 시간표 (학교코드 + 학년 + 반) | 서버에서 호출 → `timetable` 자동 채움 | 확인 필요: 고교학점제로 선택과목은 학생마다 시간표가 달라 학급 시간표와 어긋날 수 있음 → 자동 채움 후 학생이 수정 |
 | 학교별 사용 교과서 | 공개된 통합 데이터 없음 (학교알리미·나이스에서 확인 못 함) | 앱에 2022 개정 고1 공통과목 교과서 목록(과목·출판사·교과서명)을 시드로 넣고 학생이 선택 | 직접 구축 |
-| 문제집 검색·목차 | 알라딘 TTB Open API 상품 조회(`ItemLookUp`)의 목차(Toc) 옵션 | 서버에서 ISBN/제목 검색 → 목차를 대단원·중단원으로 변환 | 확인 필요: 목차 옵션명, 호출 제한, 출처 표기 조건 |
-| 서지정보 보조 | 국립중앙도서관 ISBN 서지정보 API (제목·저자·출판사·ISBN) | 알라딘에 없는 책의 기본 정보 보충 | 확인 필요: 목차 항목 제공 여부 |
+| 문제집 검색·목차 | YES24 Open API 상품 목차 조회(`/v1/goods/content`) | 서버에서 ISBN/제목 검색 → 목차를 대단원·중단원으로 변환 | 확인 필요: 목차 옵션명, 호출 제한, 출처 표기 조건 |
+| 서지정보 보조 | 국립중앙도서관 ISBN 서지정보 API (제목·저자·출판사·ISBN) | YES24에 없는 책의 기본 정보 보충 | 확인 필요: 목차 항목 제공 여부 |
 
 **교재 등록 흐름**
 1. 학교 등록: 학교명 검색 → 학교 선택 → 학년·반 입력 → (선택) 시간표 가져오기.
@@ -205,7 +205,7 @@ study-planner/
 
 **추가 DB 항목**
 - `users`: `school_code`, `office_code`(시도교육청), `grade`, `class_no` 컬럼 추가.
-- `book_catalog`: id, isbn(UNIQUE), title, publisher, author, toc_raw(TEXT), source(aladin/nl), fetched_at.
+- `book_catalog`: id, isbn(UNIQUE), title, publisher, author, toc_raw(TEXT), source(yes24/nl), fetched_at.
 - `textbooks`: `catalog_id`(NULL 허용) 컬럼 추가 → 카탈로그 책과 연결.
 - `materials`: `type`에 `scan`(사진/스캔) 추가, `is_private` 항상 1.
 

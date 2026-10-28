@@ -1,5 +1,5 @@
 <?php
-// 테스트용 가짜 외부 서비스: 알라딘 · 나이스 · Claude Messages API.
+// 테스트용 가짜 외부 서비스: YES24 · 나이스 · Claude Messages API.
 // 실제 서비스의 응답을 흉내 낸 것이라, 이 테스트가 통과해도 실제 서비스와 맞는지는 키를 넣고 따로 확인해야 한다.
 //   EXT_LOG=/tmp/ext.log php -S 127.0.0.1:8098 backend/tests/fake_external_server.php
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -9,22 +9,26 @@ $log = static function (array $e): void {
     file_put_contents(getenv('EXT_LOG') ?: '/tmp/ext.log', json_encode($e, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX);
 };
 
-if (str_ends_with($path, '/ItemSearch.aspx')) {
-    $log(['path' => $path, 'query' => $q]);
-    if (($q['ttbkey'] ?? '') !== 'test-ttb') {
-        echo json_encode(['errorCode' => 100, 'errorMessage' => 'invalid key']);
+if (str_ends_with($path, '/v1/goods/itemList')) {
+    $log(['path' => $path, 'query' => $q, 'key' => $_SERVER['HTTP_X_API_KEY'] ?? '']);
+    if (($_SERVER['HTTP_X_API_KEY'] ?? '') !== 'test-yes24') {
+        http_response_code(401);
+        echo json_encode(['success' => false, 'message' => '유효하지 않은 API Key', 'errorCode' => 'AUTH_002', 'data' => null]);
         return;
     }
-    echo json_encode(['version' => '20131101', 'item' => [
-        ['title' => '테스트 수학 개념서', 'author' => '홍길동', 'publisher' => '테스트출판', 'pubDate' => '2025-01-02', 'isbn13' => '9781234567890', 'cover' => 'https://img.example/c.jpg'],
+    echo json_encode(['success' => true, 'message' => '성공', 'errorCode' => null, 'data' => ['items' => [
+        ['title' => '테스트 수학 개념서', 'author' => '홍길동', 'publisher' => '테스트출판', 'publishDate' => '2025-01-02', 'isbn13' => '9781234567890', 'cover' => 'https://img.example/c.jpg'],
         ['author' => '제목 없는 항목'],
-    ]]);
-} elseif (str_ends_with($path, '/ItemLookUp.aspx')) {
-    $log(['path' => $path, 'query' => $q]);
-    $toc = $q['ItemId'] === '9781234567890'
-        ? "Ⅰ. 다항식<br/>1-1 다항식의 연산 ........ 8<br/>1-2 나머지정리 ........ 20<br/>Ⅱ. 방정식<br/>2-1 복소수 ........ 40<br/>"
-        : '';
-    echo json_encode(['item' => [['subInfo' => ['toc' => $toc]]]]);
+    ], 'currentPage' => 1, 'pageSize' => 10, 'totalCount' => 2]]);
+} elseif (str_ends_with($path, '/v1/goods/content')) {
+    $log(['path' => $path, 'query' => $q, 'key' => $_SERVER['HTTP_X_API_KEY'] ?? '']);
+    if ($q['query'] !== '9781234567890') {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'message' => '목차 없음', 'errorCode' => 'GOODS_001', 'data' => null]);
+        return;
+    }
+    echo json_encode(['success' => true, 'message' => '성공', 'errorCode' => null, 'data' => ['data' => ['itemId' => 1, 'contents' =>
+        "Ⅰ. 다항식<br/>1-1 다항식의 연산 ........ 8<br/>1-2 나머지정리 ........ 20<br/>Ⅱ. 방정식<br/>2-1 복소수 ........ 40<br/>"]]]);
 } elseif (str_ends_with($path, '/schoolInfo')) {
     $log(['path' => $path, 'query' => $q]);
     echo json_encode(['schoolInfo' => [

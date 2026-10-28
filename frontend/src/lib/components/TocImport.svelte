@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { get, post } from '#lib/api.js';
 
-	/** 서점(알라딘) 목차를 검색해 단원 후보로 가져온다. 저장 전에 학생이 고치고 고른다. 단원 이름·쪽수만 저장해요. */
+	/** 서점(YES24) 목차를 검색해 단원 후보로 가져온다. 저장 전에 학생이 고치고 고른다. 단원 이름·쪽수만 저장해요. */
 	let { textbookId, defaultQuery = '', onimported, onclose } = $props();
 
 	let query = $state(defaultQuery);
@@ -77,8 +77,8 @@
 		<button class="btn btn-small" onclick={onclose}>닫기</button>
 	</div>
 
-	{#if status && !status.aladin}
-		<p class="muted small">알라딘 연동이 설정되지 않았어요. 관리자가 알라딘 TTB 키를 서버 설정에 넣으면 쓸 수 있어요. 그동안은 단원을 직접 추가해 주세요.</p>
+	{#if status && !status.yes24}
+		<p class="muted small">YES24 연동이 설정되지 않았어요. 관리자가 YES24 API 키를 서버 설정에 넣으면 쓸 수 있어요. 그동안은 단원을 직접 추가해 주세요.</p>
 	{:else}
 		<p class="muted small">단원 이름과 쪽수만 가져와요. 서점 목차는 형식이 제각각이라 저장 전에 꼭 확인하고 고쳐 주세요.</p>
 		{#if error}<p class="alert" role="alert">{error}</p>{/if}

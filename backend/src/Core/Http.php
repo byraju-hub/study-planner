@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace App\Core;
 
-/** 외부 서비스(알라딘·나이스·Claude)를 부르는 얇은 curl 래퍼. 실패하면 502. */
+/** 외부 서비스(YES24·나이스·Claude)를 부르는 얇은 curl 래퍼. 실패하면 502. */
 final class Http
 {
     /** @return array<string,mixed> */
