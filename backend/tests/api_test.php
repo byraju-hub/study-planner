@@ -687,5 +687,121 @@ check('삭제하면 단계 할 일도 모두 사라짐', count($assessTasks($c, 
 [$s, $r] = $c->call('GET', "/assessments/$asId");
 check('삭제된 수행평가 → 404', $s === 404, $r);
 
+echo "[관리자 · 가입 방식 · 회원 탈퇴]\n";
+$adm = new Client($base);
+$adm->boot();
+[$s, $r] = $adm->call('POST', '/auth/login', ['login_id' => 'testadmin', 'password' => 'adminpass1']);
+if ($s === 200) {
+    $adm->csrf = $r['data']['csrf'];
+} else {
+    $adm->signup('testadmin', 'adminpass1');
+}
+[$s, $r] = $adm->call('GET', '/auth/me');
+check('관리자 me → is_admin', $r['data']['user']['is_admin'] === true, $r);
+[$s, $r] = $a->call('GET', '/auth/me');
+check('일반 회원은 is_admin false', $r['data']['user']['is_admin'] === false, $r);
+[$s, $r] = $a->call('GET', '/admin/users');
+check('일반 회원이 관리자 API → 403', $s === 403, $r);
+[$s, $r] = (new Client($base))->call('GET', '/admin/users');
+check('비로그인 관리자 API → 401', $s === 401, $r);
+$adm->call('PUT', '/admin/settings', ['signup_mode' => 'open']);
+
+$adm->call('PUT', '/admin/settings', ['signup_mode' => 'approval']);
+$pend = new Client($base);
+$pend->boot();
+[$s, $r] = $pend->call('POST', '/auth/signup', ['login_id' => "pd$run", 'email' => "pd$run@example.com", 'password' => 'passw0rd123', 'name' => '대기']);
+check('승인제: 가입하면 대기 상태, 로그인 안 됨', $s === 200 && ($r['data']['pending'] ?? false) === true && !isset($r['data']['user']), $r);
+[$s, $r] = $pend->call('GET', '/subjects');
+check('대기 회원은 API 사용 불가', $s === 401, $r);
+[$s, $r] = $pend->call('POST', '/auth/login', ['login_id' => "pd$run", 'password' => 'wrongpass1']);
+check('대기 회원이 틀린 비밀번호 → 일반 오류(상태 노출 안 함)', $s === 401 && $r['error']['code'] === 'bad_credentials', $r);
+[$s, $r] = $pend->call('POST', '/auth/login', ['login_id' => "pd$run", 'password' => 'passw0rd123']);
+check('대기 회원 로그인 → 403 pending', $s === 403 && $r['error']['code'] === 'pending', $r);
+[$s, $r] = $adm->call('GET', '/admin/users?status=pending');
+$pid = 0;
+foreach ($r['data']['users'] as $u) {
+    if ($u['login_id'] === "pd$run") {
+        $pid = $u['id'];
+    }
+}
+check('관리자 목록에 대기 회원', $pid > 0 && count($r['data']['users']) >= 1, $r);
+[$s, $r] = $adm->call('POST', "/admin/users/$pid/status", ['status' => 'active']);
+check('승인', $s === 200, $r);
+$pend->boot();
+[$s, $r] = $pend->call('POST', '/auth/login', ['login_id' => "pd$run", 'password' => 'passw0rd123']);
+check('승인 후 로그인', $s === 200, $r);
+$pend->csrf = $r['data']['csrf'];
+
+$adm->call('PUT', '/admin/settings', ['signup_mode' => 'closed']);
+$cl = new Client($base);
+$cl->boot();
+[$s, $r] = $cl->call('POST', '/auth/signup', ['login_id' => "cl$run", 'email' => "cl$run@example.com", 'password' => 'passw0rd123', 'name' => '닫힘']);
+check('가입 중단: 새 가입 403', $s === 403 && $r['error']['code'] === 'signup_closed', $r);
+[$s, $r] = $cl->call('GET', '/auth/me');
+check('me 에 가입 방식 포함', $r['data']['signup_mode'] === 'closed', $r);
+[$s, $r] = $adm->call('PUT', '/admin/settings', ['signup_mode' => 'weird']);
+check('가입 방식 값 오류 → 422', $s === 422, $r);
+$adm->call('PUT', '/admin/settings', ['signup_mode' => 'open']);
+
+[$s, $r] = $adm->call('POST', "/admin/users/$pid/status", ['status' => 'blocked']);
+check('차단', $s === 200, $r);
+[$s, $r] = $pend->call('GET', '/subjects');
+check('차단하면 쓰던 세션도 즉시 무효', $s === 401, $r);
+$pend->boot();
+[$s, $r] = $pend->call('POST', '/auth/login', ['login_id' => "pd$run", 'password' => 'passw0rd123']);
+check('차단 회원 로그인 → 403 blocked', $s === 403 && $r['error']['code'] === 'blocked', $r);
+$adm->call('POST', "/admin/users/$pid/status", ['status' => 'active']);
+
+[$s, $r] = $adm->call('POST', "/admin/users/$pid/reset-password");
+$temp = $r['data']['temporary_password'] ?? '';
+check('비밀번호 초기화 → 임시 비밀번호 발급', $s === 200 && strlen($temp) === 10, $r);
+$pend->boot();
+[$s, $r] = $pend->call('POST', '/auth/login', ['login_id' => "pd$run", 'password' => 'passw0rd123']);
+check('이전 비밀번호는 더 이상 안 됨', $s === 401, $r);
+[$s, $r] = $pend->call('POST', '/auth/login', ['login_id' => "pd$run", 'password' => $temp]);
+check('임시 비밀번호로 로그인 + 변경 필요 표시', $s === 200 && $r['data']['user']['must_change_password'] === true, $r);
+$pend->csrf = $r['data']['csrf'];
+[$s, $r] = $pend->call('PUT', '/auth/password', ['current_password' => $temp, 'new_password' => 'brandnew77']);
+check('비밀번호 변경', $s === 200, $r);
+[$s, $r] = $pend->call('GET', '/auth/me');
+check('변경 후 must_change_password 해제 + 로그인 유지', $r['data']['user']['must_change_password'] === false, $r);
+
+[$s, $r] = $adm->call('POST', '/admin/users/' . $u1['id'] . '/reset-password');
+$other = new Client($base);
+$other->boot();
+[$s, $r] = $other->call('POST', '/auth/login', ['login_id' => "u1$run", 'password' => 'newpass456']);
+check('다른 기기 세션: 초기화 전 비밀번호는 거부', $s === 401, $r);
+
+[$s, $r] = $adm->call('POST', '/admin/users/' . $adm->call('GET', '/auth/me')[1]['data']['user']['id'] . '/status', ['status' => 'blocked']);
+check('관리자 본인은 차단 불가', $s === 422, $r);
+[$s, $r] = $adm->call('GET', '/admin/stats');
+check('통계', $s === 200 && $r['data']['counts']['active'] >= 2, $r);
+[$s, $r] = $adm->call('GET', '/admin/log');
+$actions = array_column($r['data']['log'], 'action');
+check('관리자 기록에 승인·차단·초기화가 남음', in_array('approve', $actions) && in_array('block', $actions) && in_array('reset_password', $actions), $actions);
+[$s, $r] = $adm->call('GET', '/admin/users?q=pd' . $run);
+check('회원 검색', count($r['data']['users']) === 1 && $r['data']['users'][0]['login_id'] === "pd$run", $r);
+
+// 회원 탈퇴 · 관리자의 회원 삭제
+$bye = new Client($base);
+$byeUser = $bye->signup("bye$run");
+$bye->call('POST', '/subjects', ['name' => '탈퇴과목']);
+[$s, $r] = $bye->call('DELETE', '/auth/account', ['password' => 'wrongpass1']);
+check('탈퇴: 비밀번호가 틀리면 422', $s === 422, $r);
+[$s, $r] = $bye->call('DELETE', '/auth/account', ['password' => 'passw0rd123']);
+check('탈퇴', $s === 200 && $r['data']['deleted'] === true, $r);
+$bye->csrf = $r['data']['csrf'];
+[$s, $r] = $bye->call('POST', '/auth/login', ['login_id' => "bye$run", 'password' => 'passw0rd123']);
+check('탈퇴한 아이디로 로그인 불가', $s === 401, $r);
+[$s, $r] = $adm->call('DELETE', '/auth/account', ['password' => 'adminpass1']);
+check('관리자 계정은 탈퇴 불가', $s === 422, $r);
+
+[$s, $r] = $adm->call('DELETE', "/admin/users/$pid", ['confirm_login_id' => 'nope']);
+check('관리자 삭제: 확인 아이디가 다르면 422', $s === 422, $r);
+[$s, $r] = $adm->call('DELETE', "/admin/users/$pid", ['confirm_login_id' => "pd$run"]);
+check('관리자가 회원 삭제', $s === 200, $r);
+[$s, $r] = $adm->call('GET', '/admin/users?q=pd' . $run);
+check('삭제된 회원은 목록에서 사라짐', count($r['data']['users']) === 0, $r);
+
 echo "\n" . ($failures === 0 ? "전체 통과 ($checks)" : "실패 $failures / $checks") . "\n";
 exit($failures === 0 ? 0 : 1);

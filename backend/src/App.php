@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App;
 
+use App\Controllers\AdminController;
 use App\Controllers\AssessmentController;
 use App\Controllers\AuthController;
 use App\Controllers\ExamController;
@@ -69,6 +70,16 @@ final class App
         $r->add('POST', '/auth/login', [AuthController::class, 'login'], false);
         $r->add('POST', '/auth/logout', [AuthController::class, 'logout'], false);
         $r->add('PUT', '/auth/password', [AuthController::class, 'changePassword']);
+        $r->add('DELETE', '/auth/account', [AuthController::class, 'deleteAccount']);
+
+        $r->add('GET', '/admin/users', [AdminController::class, 'users']);
+        $r->add('GET', '/admin/stats', [AdminController::class, 'stats']);
+        $r->add('POST', '/admin/users/{id}/status', [AdminController::class, 'setStatus']);
+        $r->add('POST', '/admin/users/{id}/reset-password', [AdminController::class, 'resetPassword']);
+        $r->add('DELETE', '/admin/users/{id}', [AdminController::class, 'deleteUser']);
+        $r->add('GET', '/admin/settings', [AdminController::class, 'settings']);
+        $r->add('PUT', '/admin/settings', [AdminController::class, 'updateSettings']);
+        $r->add('GET', '/admin/log', [AdminController::class, 'logs']);
         $r->add('PUT', '/auth/profile', [AuthController::class, 'updateProfile']);
 
         $r->add('GET', '/subjects', [SubjectController::class, 'list']);

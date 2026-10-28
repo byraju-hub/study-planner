@@ -35,6 +35,18 @@ final class Files
         }
     }
 
+    /** 사용자 업로드 폴더가 비어 있으면 지운다. */
+    public static function removeUserDir(int $userId): void
+    {
+        $dir = self::dir() . '/' . $userId;
+        if (is_dir($dir)) {
+            foreach (glob($dir . '/*') ?: [] as $left) {
+                @unlink($left);
+            }
+            @rmdir($dir);
+        }
+    }
+
     /** @return list<string> */
     public static function pathsUnderUnit(int $unitId, int $userId): array
     {

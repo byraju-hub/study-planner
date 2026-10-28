@@ -11,6 +11,8 @@ return [
     // 요청 경로에서 이 접두어를 떼고 라우팅한다.
     'base_path' => '/sp/api',
     'timezone' => 'Asia/Seoul',
+    // 최고 관리자 아이디. 이 아이디로 가입/로그인한 사람만 /admin 을 쓸 수 있다. 비워 두면 관리자 없음.
+    'admin_login_id' => '',
     'session' => [
         'name' => 'SPSESS',
         'lifetime' => 1209600, // 14일
