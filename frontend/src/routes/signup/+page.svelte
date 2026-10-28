@@ -7,6 +7,7 @@
 	let error = $state('');
 	let errorField = $state('');
 	let busy = $state(false);
+	let pending = $state(false);
 
 	$effect(() => {
 		if (auth.user) goto(resolve('/'), { replaceState: true });
@@ -18,7 +19,7 @@
 		errorField = '';
 		busy = true;
 		try {
-			await signup({
+			const result = await signup({
 				login_id: f.login_id,
 				email: f.email,
 				password: f.password,
@@ -26,6 +27,7 @@
 				school_name: f.school_name || null,
 				grade: f.grade ? Number(f.grade) : null
 			});
+			pending = result.pending;
 		} catch (e) {
 			error = e.message;
 			errorField = e.field ?? '';
@@ -44,6 +46,13 @@
 			<span class="tab current">회원가입</span>
 		</div>
 
+		{#if pending}
+			<p class="chip" role="status">가입 신청을 받았어요. 관리자가 승인하면 로그인할 수 있어요.</p>
+			<a class="btn" href={resolve('/login')}>로그인 화면으로</a>
+		{:else if auth.signupMode === 'closed'}
+			<p class="alert" role="alert">지금은 새로 가입할 수 없어요. 관리자에게 문의해 주세요.</p>
+		{:else}
+		{#if auth.signupMode === 'approval'}<p class="hint">가입 후 관리자가 승인해야 로그인할 수 있어요.</p>{/if}
 		{#if error}<p class="alert" role="alert">{error}</p>{/if}
 
 		<div class="field">
@@ -81,6 +90,7 @@
 		</div>
 		<p class="hint">수집하는 정보는 서비스 이용에 필요한 최소한이며, 가입하면 기본 과목이 만들어져요.</p>
 		<button class="btn btn-primary" disabled={busy}>{busy ? '가입 중…' : '가입하기'}</button>
+		{/if}
 	</form>
 </main>
 
