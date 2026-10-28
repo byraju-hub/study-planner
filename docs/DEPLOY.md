@@ -50,6 +50,19 @@ phpMyAdmin → 내 DB 선택 → 가져오기 → `dist/schema.sql` 실행. 테�
 | 로그인이 계속 풀림 | HTTPS 적용 여부, 서버 세션 저장 경로 쓰기 권한 |
 | 사진 업로드 실패 | `uploads/` 권한, PHP `upload_max_filesize`(기본 2MB일 수 있음 → 호스팅 PHP 설정에서 10MB 이상) |
 
+## 5-1. 3~5단계 올리기 (관리자·알림·퀴즈·외부 연동)
+이미 1~2단계(마이그레이션 001~004)를 올린 DB라면:
+1. `dist/migrations/005_admin.sql` ~ `008_integrations.sql`을 **번호순으로** phpMyAdmin에서 실행한다. (각 파일 끝에 실행 기록 `INSERT IGNORE`가 들어 있다.)
+2. `sp_private/src/`와 `www/sp/` 전체(`_app/`, `index.html`, `sw.js`), `www/sp/api/`를 교체한다. `config.php`, `uploads/`는 건드리지 않는다.
+3. `sp_private/config.php`에 필요한 값을 추가한다 (모두 선택. 없으면 해당 기능만 꺼진다). 예시는 `config.example.php`:
+   - `admin_login_id`: 최고 관리자 아이디. **이 아이디로 가입·로그인**하면 왼쪽 메뉴에 "관리"가 생긴다. 먼저 이 아이디를 안 쓰는 사람이 가입해 버리지 않도록, 설정 직후 바로 가입한다.
+   - `cron_token`: 임의의 긴 문자열. 외부 크론(또는 호스팅 크론)이 `https://도메인/sp/api/cron/notify?token=값`을 하루 여러 번(예: 30분마다) 호출하면 앱을 안 열어도 푸시가 간다. 없으면 앱을 열 때만 알림이 만들어진다.
+   - `vapid`: 휴대폰·브라우저 푸시. 개발 PC에서 `php scripts/vapid-keys.php`를 한 번 실행해 나온 블록을 붙인다. 키를 바꾸면 기존 구독이 모두 끊긴다.
+   - `aladin.ttb_key`, `neis.key`, `anthropic.api_key`(+`model`, `daily_limit`): 각 서비스에서 발급. **키는 저장소에 올리지 않는다.**
+4. 호스팅 PHP에 `curl`, `openssl` 확장이 켜져 있어야 외부 연동·푸시가 된다.
+5. 확인: 관리자 계정으로 "관리" 화면이 열리는지, 새 계정으로 알림 종 아이콘·퀴즈 화면이 열리는지.
+6. 실제 외부 서비스와 맞는지는 아직 확인하지 못했다. `docs/PROGRESS.md`의 "실제 서비스로 확인하지 못한 것"을 먼저 읽는다.
+
 ## 6. 업데이트할 때
 - 화면만 바뀌면 `www/sp/`의 `_app/`, `index.html`을 교체한다.
 - API가 바뀌면 `sp_private/src/`와 `www/sp/api/`를 교체한다 (`config.php`, `uploads/`는 건드리지 않는다).
@@ -58,3 +71,4 @@ phpMyAdmin → 내 DB 선택 → 가져오기 → `dist/schema.sql` 실행. 테�
 
 ## 검증 기록
 2026-10-27: 같은 폴더 구조(홈/www/sp, 홈/sp_private)를 Apache 2.4 + mod_php 8.3 + MariaDB 10.11로 흉내 내어 `scripts/e2e.cjs`가 통과했다. 실제 Cafe24 서버에서는 아직 확인하지 않았다.
+2026-10-28: 3~5단계 묶음(`dist/schema.sql` 새 DB 가져오기 포함)을 같은 방식(Apache + 홈/www/sp + 홈/sp_private)으로 흉내 내어 `scripts/e2e.cjs`와 `scripts/e2e/*.cjs` 4종이 모두 통과했다(외부 서비스는 가짜 서버). `sw.js` 제공, `sp_private` 접근 차단(404), 크론 토큰 검사 확인. 실제 Cafe24 서버와 실제 외부 서비스에서는 아직 확인하지 못했다.

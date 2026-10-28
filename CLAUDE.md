@@ -19,10 +19,12 @@
 - 모든 API는 로그인한 사용자의 `user_id`로 소유권을 검사한다 (다른 사람 데이터 접근 금지).
 - 로그인 외 변경 요청(POST/PUT/DELETE)은 `X-CSRF-Token` 헤더 필수.
 - PHP는 8.4에서 돌지만 개발 환경은 8.3일 수 있으므로 8.4 전용 문법은 쓰지 않는다.
-- 모든 테이블 이름은 `sp_` 접두어를 쓴다 (`sp_users`, `sp_tasks` …). Cafe24에서 기존에 쓰던 DB를 그대로 쓰는데, 그 안에 같은 이름의 옛 테이블이 이미 있었기 때문이다 (옛 테이블은 건드리지 않는다). 새 테이블도 `sp_`로 시작하고, `Owned::find`에는 접두어 포함 이름을 넘긴다.
+- 모든 테이블 이름은 `sp_` 접두어를 쓴다 (`sp_users`, `sp_tasks` …). Cafe24에서 기존에 쓰던 DB를 그대로 쓰는데, 그 안에 같은 이름의 옛 테이블이 이미 있었기 때문이다 (옛 테이블은 건드리지 않는다). 새 테이블도 `sp_`로 시작하고, `Owned::find`에는 접두어 포함 이름을 넘긴다. 새 마이그레이션의 외래키·인덱스 이름도 `sp_fk_…`/`idx_sp_…`처럼 접두어를 붙인다 (MariaDB는 FK 이름이 DB 안에서 유일해야 한다).
 - 비밀값(DB 비밀번호 등)은 `backend/config.php`에만 둔다. 이 파일은 커밋하지 않는다 (`config.example.php`만 커밋).
 - 화면 문구는 한국어. 색상은 `frontend/src/app.css`의 CSS 변수만 쓴다 (파스텔 그린 계열 + 과목별 색).
 - 외부 교재 데이터는 목차(단원 이름·쪽수)까지만 저장한다. 본문·문제·해설 전체는 저장하지 않는다.
+- 관리자(`config.php`의 `admin_login_id`)는 회원 계정만 관리하고 회원의 공부 내용·자료는 보지 못한다. 관리자 API는 `Session::requireAdmin()`.
+- 외부로 나가는 요청(알라딘·나이스·Claude·웹 푸시)은 `Core/Http`(curl)로 하고, 학생이 확인하기 전에는 저장하지 않는다. AI에는 학생이 쓴 노트만 보내고, 동의·하루 한도·관리자 스위치를 지킨다.
 - 업로드 자료는 본인만 볼 수 있다. 공유 기능은 만들지 않는다 (`docs/ARCHITECTURE.md` 9-1 참고).
 - 코드 주석은 최소한으로, 이유가 분명하지 않은 곳에만 쓴다.
 
@@ -56,6 +58,8 @@ php backend/tests/api_test.php
 
 # 브라우저 통합 테스트 (8080 서버 + 빌드 필요, Playwright 필요). 다른 주소는 SP_BASE=http://호스트/sp
 node scripts/e2e.cjs
+# 3~5단계 브라우저 테스트: scripts/e2e/{admin,notifications,quiz,integrations}.cjs (사용법은 docs/PROGRESS.md 테스트 현황)
+# 웹 푸시용 VAPID 키 만들기: php scripts/vapid-keys.php
 
 # Cafe24 업로드 묶음 (dist/). 올리는 방법은 docs/DEPLOY.md
 scripts/package.sh
