@@ -104,6 +104,6 @@ final class Neis
             throw new HttpException(503, 'not_configured', '나이스 연동이 설정되지 않았어요. (관리자: config.php 의 neis.key)');
         }
         $base = rtrim((string) Config::get('neis.base_url', 'https://open.neis.go.kr/hub'), '/');
-        return Http::json('GET', $base . '/' . $service . '?' . http_build_query(['KEY' => Config::get('neis.key'), 'Type' => 'json', 'pIndex' => 1] + $params));
+        return Http::json('GET', $base . '/' . $service . '?' . http_build_query(['KEY' => Config::get('neis.key'), 'Type' => 'json', 'pIndex' => 1] + $params), null, ['Accept: */*']);
     }
 }

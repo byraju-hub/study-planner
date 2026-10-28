@@ -10,7 +10,8 @@ final class Http
     public static function json(string $method, string $url, ?array $body = null, array $headers = [], int $timeout = 15): array
     {
         $ch = curl_init($url);
-        $h = ['Accept: application/json'];
+        // 나이스는 Accept: application/json 을 보내면 500 을 돌려준다. 호출하는 쪽이 'Accept: */*' 로 덮어쓸 수 있다.
+        $h = array_filter($headers, static fn(string $x): bool => stripos($x, 'Accept:') === 0) === [] ? ['Accept: application/json'] : [];
         if ($body !== null) {
             $h[] = 'Content-Type: application/json';
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
