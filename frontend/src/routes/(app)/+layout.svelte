@@ -5,6 +5,7 @@
 	import { onMount } from 'svelte';
 	import { auth } from '#lib/auth.svelte.js';
 	import { inbox, refreshInbox } from '#lib/notify.svelte.js';
+	import Logo from '#lib/components/Logo.svelte';
 
 	let { children } = $props();
 
@@ -56,7 +57,10 @@
 {#if auth.user}
 	<div class="shell">
 		<nav class="nav" aria-label="주 메뉴">
-			<div class="brand"><span class="logo">SP</span><span class="brand-name">스터디 플래너</span></div>
+			<a class="brand" href={resolve('/')} aria-label="스터디 플래너 홈">
+				<Logo size={36} />
+				<span class="brand-text"><span class="brand-name">스터디 플래너</span><span class="brand-sub">Study Planner</span></span>
+			</a>
 			<a class="bell" href={resolve('/notifications')} aria-label={inbox.unread > 0 ? `알림 ${inbox.unread}개` : '알림'}>
 			<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7zM10 20a2 2 0 0 0 4 0" /></svg>
 			{#if inbox.unread > 0}<span class="badge">{inbox.unread > 9 ? '9+' : inbox.unread}</span>{/if}
@@ -104,21 +108,22 @@
 		align-items: center;
 		gap: 10px;
 		padding: 0 6px 20px;
+		text-decoration: none;
+		color: inherit;
 	}
-	.logo {
-		width: 36px;
-		height: 36px;
-		border-radius: 10px;
-		background: var(--accent);
-		color: #fff;
-		display: grid;
-		place-items: center;
-		font-weight: 700;
-		font-size: 14px;
+	.brand-text {
+		display: flex;
+		flex-direction: column;
+		line-height: 1.2;
 	}
 	.brand-name {
 		font-size: 17px;
 		font-weight: 700;
+	}
+	.brand-sub {
+		font-size: 11px;
+		letter-spacing: 0.04em;
+		color: #a3a8b3;
 	}
 	.nav-item {
 		display: flex;

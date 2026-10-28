@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { auth, login } from '#lib/auth.svelte.js';
+	import Logo from '#lib/components/Logo.svelte';
 
 	let loginId = $state('');
 	let password = $state('');
@@ -30,7 +31,7 @@
 
 <main class="auth">
 	<section class="intro">
-		<div class="logo">SP</div>
+		<Logo size={56} />
 		<h1>스터디 플래너</h1>
 		<p>오늘 할 일부터 시험까지,<br />한 곳에서 관리해요.</p>
 	</section>
@@ -77,16 +78,6 @@
 	.intro p {
 		font-size: 18px;
 		color: #2f5b45;
-	}
-	.logo {
-		width: 48px;
-		height: 48px;
-		border-radius: 14px;
-		background: var(--accent);
-		color: #fff;
-		display: grid;
-		place-items: center;
-		font-weight: 700;
 	}
 	.panel {
 		width: min(400px, 100% - 48px);
