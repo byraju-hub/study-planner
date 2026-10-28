@@ -1046,5 +1046,111 @@ check('관리자가 회원 삭제', $s === 200, $r);
 [$s, $r] = $adm->call('GET', '/admin/users?q=pd' . $run);
 check('삭제된 회원은 목록에서 사라짐', count($r['data']['users']) === 0, $r);
 
+echo "[외부 연동: 알라딘 · 나이스 · AI]\n";
+$extLog = sys_get_temp_dir() . '/sp_ext_test.log';
+@unlink($extLog);
+$ext = proc_open(['php', '-S', '127.0.0.1:8098', __DIR__ . '/fake_external_server.php'], [['file', '/dev/null', 'r'], ['file', '/dev/null', 'w'], ['file', '/dev/null', 'w']], $pipes2, null, ['EXT_LOG' => $extLog, 'PATH' => getenv('PATH')]);
+usleep(400000);
+
+$ex = new Client($base);
+$ex->signup("ex$run");
+[$s, $r] = $ex->call('GET', '/integrations');
+check('연동 상태: 알라딘·나이스 설정됨, AI 동의 전', $s === 200 && $r['data']['aladin'] === true && $r['data']['neis'] === true && $r['data']['ai']['available'] === true && $r['data']['ai']['consent'] === false && $r['data']['ai']['remaining_today'] === 3, $r);
+[$s, $r] = (new Client($base))->call('GET', '/catalog/books?q=' . rawurlencode('수학'));
+check('비로그인 연동 호출 → 401', $s === 401, $r);
+
+[$s, $r] = $ex->call('GET', '/catalog/books?q=' . rawurlencode('수'));
+check('검색어 1글자 → 422', $s === 422, $r);
+[$s, $r] = $ex->call('GET', '/catalog/books?q=' . rawurlencode('수학 개념서'));
+check('서점 검색: 제목 없는 항목은 빼고 필요한 필드만', $s === 200 && count($r['data']) === 1 && $r['data'][0]['isbn13'] === '9781234567890' && $r['data'][0]['publisher'] === '테스트출판', $r);
+[$s, $r] = $ex->call('GET', '/catalog/toc?isbn=abc');
+check('ISBN 형식 오류 → 422', $s === 422, $r);
+[$s, $r] = $ex->call('GET', '/catalog/toc?isbn=9781234567890');
+check('목차 가져오기 → 단원 후보', $s === 200 && count($r['data']['items']) === 5 && $r['data']['items'][1]['page_start'] === 8, $r);
+$tocItems = $r['data']['items'];
+[$s, $r] = $ex->call('GET', '/catalog/toc?isbn=9780000000000');
+check('목차가 없는 책은 empty 표시', $s === 200 && $r['data']['empty'] === true && $r['data']['items'] === [], $r);
+
+[$s, $r] = $ex->call('GET', '/subjects');
+$exSub = $r['data'][0]['id'];
+[$s, $r] = $ex->call('POST', '/textbooks', ['subject_id' => $exSub, 'title' => '가져온 교재', 'kind' => 'workbook']);
+$exTb = $r['data']['id'];
+[$s, $r] = $ex->call('POST', "/textbooks/$exTb/import-toc", ['items' => $tocItems]);
+check('목차 후보를 단원으로 저장', $s === 200 && $r['data']['created'] === 5, $r);
+[$s, $r] = $ex->call('GET', "/units?textbook_id=$exTb");
+$tops = array_values(array_filter($r['data'], fn($u) => $u['parent_id'] === null));
+$kids = array_values(array_filter($r['data'], fn($u) => $u['parent_id'] !== null));
+check('대단원 2개 아래에 소단원 3개가 묶임', count($tops) === 2 && count($kids) === 3 && $kids[0]['parent_id'] === $tops[0]['id'] && $kids[2]['parent_id'] === $tops[1]['id'], $r['data']);
+[$s, $r] = $b->call('POST', "/textbooks/$exTb/import-toc", ['items' => $tocItems]);
+check('남의 교재에 목차 저장 → 404', $s === 404, $r);
+[$s, $r] = $ex->call('POST', "/textbooks/$exTb/import-toc", ['items' => [['title' => '']]]);
+check('빈 단원 이름 → 422 (하나라도 틀리면 저장 안 함)', $s === 422, $r);
+[$s, $r] = $ex->call('GET', "/units?textbook_id=$exTb");
+check('실패한 저장은 아무것도 남기지 않음', count($r['data']) === 5, count($r['data']));
+
+[$s, $r] = $ex->call('GET', '/neis/schools?q=' . rawurlencode('테스트'));
+check('학교 검색', $s === 200 && $r['data'][0]['school_code'] === '7530000' && $r['data'][0]['office_code'] === 'J10' && $r['data'][0]['name'] === '테스트고등학교', $r);
+[$s, $r] = $ex->call('POST', '/neis/timetable', ['office_code' => 'J10', 'school_code' => '7530000', 'grade' => 1, 'class_no' => 3]);
+$matched = array_column($r['data']['slots'] ?? [], 'subject_id', 'name');
+check('시간표 미리보기: 내 과목과 짝지음(공통국어1→공통국어), 못 찾은 과목은 unmatched', $s === 200 && count($r['data']['slots']) === 5 && $matched['공통국어1'] === $exSub && $matched['공통수학1'] !== null && $matched['체육'] === null && in_array('자율활동', $r['data']['unmatched'], true), $r);
+[$s, $r] = $ex->call('POST', '/neis/timetable', ['office_code' => 'J10', 'school_code' => '7530000', 'grade' => 1, 'class_no' => 40]);
+check('시간표가 없는 학급 → 빈 목록', $s === 200 && $r['data']['slots'] === [], $r);
+[$s, $r] = $ex->call('POST', '/neis/timetable', ['office_code' => 'J10', 'grade' => 1, 'class_no' => 3]);
+check('학교 코드 없이 요청 → 422', $s === 422, $r);
+
+// AI 문제 후보
+[$s, $r] = $ex->call('POST', '/ai/questions', ['text' => str_repeat('나머지정리는 다항식을 일차식으로 나눈 나머지를 구하는 정리다. ', 3), 'count' => 3]);
+check('동의 전에는 AI 사용 불가 → 403', $s === 403 && $r['error']['code'] === 'consent_required', $r);
+[$s, $r] = $ex->call('POST', '/ai/consent', ['agree' => false]);
+check('동의하지 않으면 422', $s === 422, $r);
+[$s, $r] = $ex->call('POST', '/ai/consent', ['agree' => true]);
+check('AI 사용 동의', $s === 200, $r);
+[$s, $r] = $ex->call('POST', '/ai/questions', ['text' => '너무 짧음']);
+check('노트가 너무 짧으면 422 (한도는 차감 안 됨)', $s === 422, $r);
+$note = str_repeat('나머지정리는 다항식을 일차식으로 나눈 나머지를 구하는 정리다. ', 3);
+[$s, $r] = $ex->call('POST', '/ai/questions', ['text' => $note, 'count' => 5, 'types' => ['mcq', 'ox']]);
+check('AI 문제 후보: 잘못된 문제·허용 안 한 형식은 걸러짐 (2개)', $s === 200 && count($r['data']['questions']) === 2 && $r['data']['questions'][0]['type'] === 'mcq' && $r['data']['remaining_today'] === 2, $r);
+$candidates = $r['data']['questions'];
+$sent = null;
+foreach (file($extLog, FILE_IGNORE_NEW_LINES) as $line) {
+    $e = json_decode($line, true);
+    if (str_ends_with($e['path'], '/v1/messages')) {
+        $sent = $e;
+    }
+}
+check('Claude 요청: x-api-key · anthropic-version 헤더, 노트가 <note> 안에 들어감', $sent !== null && $sent['key'] === 'test-claude' && $sent['version'] === '2023-06-01' && str_contains($sent['body']['messages'][0]['content'], '<note>') && str_contains($sent['body']['messages'][0]['content'], '나머지정리'), $sent['body']['model'] ?? null);
+[$s, $r] = $ex->call('POST', '/questions/bulk', ['source' => 'ai', 'questions' => array_map(fn($q) => $q + ['subject_id' => $exSub], $candidates)]);
+check('학생이 고른 AI 문제를 저장', $s === 200 && $r['data']['created'] === 2, $r);
+[$s, $r] = $ex->call('GET', "/questions?subject_id=$exSub");
+check('저장된 문제는 source=ai 로 표시', count($r['data']) === 2 && $r['data'][0]['source'] === 'ai', $r);
+
+// 단원 노트로 만들기
+[$s, $r] = $ex->call('POST', '/units', ['textbook_id' => $exTb, 'title' => '노트 단원']);
+$noteUnit = $r['data']['id'];
+[$s, $r] = $ex->call('POST', '/materials', ['unit_id' => $noteUnit, 'type' => 'note', 'title' => '정리', 'content' => $note]);
+check('단원에 노트 저장', $s === 200, $r);
+[$s, $r] = $ex->call('POST', '/ai/questions', ['unit_id' => $noteUnit, 'count' => 2]);
+check('단원 노트로 AI 문제 후보 (한도 1 남음)', $s === 200 && $r['data']['remaining_today'] === 1, $r);
+[$s, $r] = $b->call('POST', '/ai/questions', ['unit_id' => $noteUnit, 'count' => 2]);
+check('남의 단원으로 요청 → 403(동의 전)/404', in_array($s, [403, 404], true), $r);
+[$s, $r] = $ex->call('POST', '/ai/questions', ['text' => 'FAILME ' . $note]);
+check('AI 서비스 오류(529) → 502, 한도는 되돌림', $s === 502 && $r['error']['code'] === 'upstream', $r);
+[$s, $r] = $ex->call('GET', '/integrations');
+check('실패한 호출은 한도를 쓰지 않음', $r['data']['ai']['remaining_today'] === 1, $r['data']['ai']);
+$ex->call('POST', '/ai/questions', ['text' => $note]);
+[$s, $r] = $ex->call('POST', '/ai/questions', ['text' => $note]);
+check('하루 한도(3회) 초과 → 429', $s === 429 && $r['error']['code'] === 'limit', $r);
+
+$adm->call('PUT', '/admin/settings', ['ai_enabled' => false]);
+[$s, $r] = $ex->call('GET', '/integrations');
+check('관리자가 AI 를 끄면 사용 불가', $r['data']['ai']['available'] === false, $r['data']['ai']);
+[$s, $r] = $ex->call('POST', '/ai/questions', ['text' => $note]);
+check('AI 꺼진 상태에서 호출 → 503', $s === 503, $r);
+$adm->call('PUT', '/admin/settings', ['ai_enabled' => true]);
+
+proc_terminate($ext);
+proc_close($ext);
+@unlink($extLog);
+
 echo "\n" . ($failures === 0 ? "전체 통과 ($checks)" : "실패 $failures / $checks") . "\n";
 exit($failures === 0 ? 0 : 1);

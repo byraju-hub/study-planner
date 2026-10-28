@@ -9,6 +9,7 @@ use App\Controllers\AuthController;
 use App\Controllers\ExamController;
 use App\Controllers\ExamPlanController;
 use App\Controllers\ExamSubjectController;
+use App\Controllers\IntegrationController;
 use App\Controllers\JournalController;
 use App\Controllers\MaterialController;
 use App\Controllers\NotificationController;
@@ -74,6 +75,15 @@ final class App
         $r->add('POST', '/auth/logout', [AuthController::class, 'logout'], false);
         $r->add('PUT', '/auth/password', [AuthController::class, 'changePassword']);
         $r->add('DELETE', '/auth/account', [AuthController::class, 'deleteAccount']);
+
+        $r->add('GET', '/integrations', [IntegrationController::class, 'status']);
+        $r->add('GET', '/catalog/books', [IntegrationController::class, 'books']);
+        $r->add('GET', '/catalog/toc', [IntegrationController::class, 'bookToc']);
+        $r->add('POST', '/textbooks/{id}/import-toc', [IntegrationController::class, 'importToc']);
+        $r->add('GET', '/neis/schools', [IntegrationController::class, 'schools']);
+        $r->add('POST', '/neis/timetable', [IntegrationController::class, 'timetablePreview']);
+        $r->add('POST', '/ai/consent', [IntegrationController::class, 'aiConsent']);
+        $r->add('POST', '/ai/questions', [IntegrationController::class, 'aiQuestions']);
 
         $r->add('GET', '/questions', [QuestionController::class, 'list']);
         $r->add('POST', '/questions', [QuestionController::class, 'create']);

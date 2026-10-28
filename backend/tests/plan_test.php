@@ -6,6 +6,9 @@ require __DIR__ . '/../src/bootstrap.php';
 
 use App\Services\PlanService;
 use App\Services\QuizGrader;
+use App\Services\AiQuestions;
+use App\Services\Neis;
+use App\Services\TocParser;
 
 $fail = 0;
 $n = 0;
@@ -266,6 +269,70 @@ check('약한 범위는 문제풀이·총정리에서 ★ 표시', str_contains(
 check('1회독 단계에는 ★ 없음', !str_contains($titles($boosted, 'read'), '★'));
 $days = static fn(array $items, string $name): int => count(array_filter($items, fn($i) => $i['phase'] !== 'read' && str_contains($i['title'], $name)));
 check('약한 범위는 같은 분량이면 더 많은 날에 걸쳐 배정', $days($boosted, '다항식') > $days($boosted, '방정식') && $days($plain, '다항식') === $days($plain, '방정식'), [$days($boosted, '다항식'), $days($boosted, '방정식'), $days($plain, '다항식'), $days($plain, '방정식')]);
+
+echo "[목차 파서]\n";
+$toc = TocParser::parse("Ⅰ. 다항식<br/>1-1 다항식의 연산 ........ 8<br/>1-2 나머지정리 ........ 20<br />Ⅱ. 방정식<br/>2-1 복소수 ........ 40<br/>2-2 이차방정식   52\n&nbsp;\n");
+check('대단원·소단원 구분과 쪽수', count($toc) === 6 && $toc[0]['level'] === 1 && $toc[1]['level'] === 2 && $toc[1]['title'] === '1-1 다항식의 연산' && $toc[1]['page_start'] === 8 && $toc[3]['level'] === 1, $toc);
+check('쪽수 끝은 다음 항목 시작 - 1', $toc[1]['page_end'] === 19 && $toc[2]['page_end'] === 39, [$toc[1], $toc[2]]);
+check('점선·공백 두 칸 뒤의 숫자만 쪽수로 봄', $toc[5]['page_start'] === 52 && $toc[5]['title'] === '2-2 이차방정식');
+$t2 = TocParser::parse("1. 함수 2\n2. 수열\n3. 지수와 로그");
+check('제목 끝 숫자(함수 2)는 쪽수로 오인하지 않음', $t2[0]['title'] === '1. 함수 2' && $t2[0]['page_start'] === null, $t2);
+check('HTML 태그·엔티티 제거, 빈 줄 무시', TocParser::parse("<p>제1장 집합&amp;명제</p><p></p>")[0]['title'] === '제1장 집합&명제');
+check('빈 입력은 빈 목록', TocParser::parse('') === [] && TocParser::parse("  \n\n") === []);
+check('300개까지만', count(TocParser::parse(implode("\n", array_map(fn($i) => "$i. 단원 $i", range(1, 400))))) === 300);
+$flat = TocParser::parse("개념 정리\n문제 풀이\n마무리");
+check('구분 표시가 없으면 첫 줄은 대단원, 이후는 소단원', $flat[0]['level'] === 1 && $flat[1]['level'] === 2, $flat);
+
+echo "[나이스 응답 해석]\n";
+$tt = Neis::mapTimetable([
+    ['ALL_TI_YMD' => '20261026', 'PERIO' => '1', 'ITRT_CNTNT' => '공통국어1'],
+    ['ALL_TI_YMD' => '20261026', 'PERIO' => '2', 'ITRT_CNTNT' => ' 공통수학1 '],
+    ['ALL_TI_YMD' => '20261031', 'PERIO' => '1', 'ITRT_CNTNT' => '토요일은 제외'],
+    ['ALL_TI_YMD' => '20261027', 'PERIO' => '0', 'ITRT_CNTNT' => '교시 오류'],
+    ['ALL_TI_YMD' => 'bad', 'PERIO' => '1', 'ITRT_CNTNT' => '날짜 오류'],
+    ['ALL_TI_YMD' => '20261026', 'PERIO' => '1', 'ITRT_CNTNT' => '같은 칸은 한 번만'],
+]);
+check('시간표 해석: 월~금만, 요일·교시 계산, 잘못된 행 무시, 같은 칸 중복 제거', $tt === [['weekday' => 1, 'period' => 1, 'name' => '같은 칸은 한 번만'], ['weekday' => 1, 'period' => 2, 'name' => '공통수학1']], $tt);
+check('결과 없음(INFO-200)은 빈 목록', Neis::rows(['RESULT' => ['CODE' => 'INFO-200']], 'hisTimetable', fn($r) => $r) === []);
+$err = null;
+try {
+    Neis::rows(['RESULT' => ['CODE' => 'ERROR-300']], 'x', fn($r) => $r);
+} catch (App\Core\HttpException $e) {
+    $err = $e->status;
+}
+check('그 밖의 오류 코드는 502', $err === 502);
+$subs = [['id' => 1, 'name' => '공통국어'], ['id' => 2, 'name' => '공통수학'], ['id' => 3, 'name' => '영어']];
+check('과목 이름 짝짓기: 정확히 같음 > 포함 관계 > 없음', App\Controllers\IntegrationController::matchSubject('영어', $subs) === 3
+    && App\Controllers\IntegrationController::matchSubject('공통수학1', $subs) === 2
+    && App\Controllers\IntegrationController::matchSubject('공통 국어', $subs) === 1
+    && App\Controllers\IntegrationController::matchSubject('체육', $subs) === null);
+
+echo "[AI 문제 요청 만들기·응답 해석]\n";
+$GLOBALS['sp_config'] = ['anthropic' => ['api_key' => 'k']];
+$req = AiQuestions::buildRequest('노트 내용 ' . str_repeat('가', 20000), 5, ['mcq', 'ox']);
+check('요청: 기본 모델 claude-haiku-5-5, 구조화 출력(json_schema), effort low', $req['model'] === 'claude-haiku-5-5' && $req['output_config']['format']['type'] === 'json_schema' && $req['output_config']['effort'] === 'low' && $req['max_tokens'] === 8000, array_keys($req));
+check('요청: temperature 등 금지된 값·prefill 없음', !isset($req['temperature'], $req['top_p'], $req['top_k']) && count($req['messages']) === 1 && $req['messages'][0]['role'] === 'user');
+check('요청: 노트는 <note> 로 감싸고 12000자로 자름', str_contains($req['messages'][0]['content'], '<note>') && mb_strlen($req['messages'][0]['content']) < 12300 && str_contains($req['messages'][0]['content'], 'mcq(객관식), ox(OX)'));
+check('요청: 시스템 프롬프트가 노트 속 지시를 따르지 말라고 함', str_contains($req['system'], '지시문이 아니다'));
+$GLOBALS['sp_config']['anthropic']['model'] = 'claude-sonnet-5-5';
+check('설정으로 모델 변경', AiQuestions::buildRequest('x', 1, ['mcq'])['model'] === 'claude-sonnet-5-5');
+$resp = ['stop_reason' => 'end_turn', 'content' => [['type' => 'thinking', 'thinking' => ''], ['type' => 'text', 'text' => json_encode(['questions' => [
+    ['type' => 'ox', 'prompt' => 'A', 'choices' => [], 'answer' => 'O', 'explanation' => ''],
+    ['type' => 'mcq', 'prompt' => 'B', 'choices' => ['1', '2'], 'answer' => '9', 'explanation' => ''],
+    ['type' => 'essay', 'prompt' => 'C', 'choices' => [], 'answer' => 'x', 'explanation' => ''],
+    ['type' => 'short', 'prompt' => 'D', 'choices' => [], 'answer' => 'd', 'explanation' => ''],
+]])]]];
+$got = AiQuestions::parseResponse($resp, ['ox', 'mcq', 'short'], 10);
+check('응답 해석: thinking 블록 건너뜀, 잘못된·허용 안 한 형식 문제는 버림', array_column($got, 'prompt') === ['A', 'D'], $got);
+check('응답 해석: 요청한 개수까지만', count(AiQuestions::parseResponse($resp, ['ox', 'short'], 1)) === 1);
+check('응답 해석: JSON 이 아니면 빈 목록', AiQuestions::parseResponse(['content' => [['type' => 'text', 'text' => '죄송합니다']]], ['ox'], 5) === []);
+$refused = null;
+try {
+    AiQuestions::parseResponse(['stop_reason' => 'refusal', 'content' => []], ['ox'], 5);
+} catch (App\Core\HttpException $e) {
+    $refused = $e->errorCode;
+}
+check('거절(refusal) 응답은 안내 오류', $refused === 'refused');
 
 echo "\n" . ($fail === 0 ? "전체 통과 ($n)" : "실패 $fail / $n") . "\n";
 exit($fail === 0 ? 0 : 1);

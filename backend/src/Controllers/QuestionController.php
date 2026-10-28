@@ -50,14 +50,15 @@ final class QuestionController
         if (!is_array($items) || $items === [] || count($items) > self::MAX_BULK) {
             throw new HttpException(422, 'validation', '문제를 1~' . self::MAX_BULK . '개 보내 주세요.', 'questions');
         }
-        $ids = Db::transaction(static function () use ($uid, $items): array {
+        $source = ($req->body['source'] ?? '') === 'ai' ? 'ai' : 'manual';
+        $ids = Db::transaction(static function () use ($uid, $items, $source): array {
             $ids = [];
             foreach ($items as $i => $q) {
                 if (!is_array($q)) {
                     throw new HttpException(422, 'validation', ($i + 1) . '번째 문제 형식이 올바르지 않아요.', 'questions');
                 }
                 try {
-                    $ids[] = self::insert($uid, $q);
+                    $ids[] = self::insert($uid, $q, $source);
                 } catch (HttpException $e) {
                     throw new HttpException(422, 'validation', ($i + 1) . '번째 문제: ' . $e->getMessage(), 'questions');
                 }
