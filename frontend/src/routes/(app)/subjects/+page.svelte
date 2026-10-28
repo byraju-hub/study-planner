@@ -96,7 +96,7 @@
 					{:else}
 						<span class="dot" style:background={s.color}></span>
 						<a class="grow name" href={resolve('/subjects/[id]', { id: String(s.id) })}>{s.name}</a>
-						<span class="muted small">교재 {s.textbook_count}</span>
+						<a class="btn btn-small btn-soft" href={resolve('/subjects/[id]', { id: String(s.id) })}>교재 {s.textbook_count} · 추가</a>
 						<button class="btn btn-small" onclick={() => startEdit(s)}>수정</button>
 						<button class="btn btn-small btn-danger" onclick={() => remove(s)}>삭제</button>
 					{/if}
