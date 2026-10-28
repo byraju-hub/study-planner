@@ -7,5 +7,10 @@
 	"orientation": "portrait",
 	"background_color": "#f4f8f3",
 	"theme_color": "#2e7d5b",
-	"icons": [{ "src": "/sp/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+	"icons": [
+		{ "src": "/sp/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+		{ "src": "/sp/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+		{ "src": "/sp/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+		{ "src": "/sp/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+	]
 }
