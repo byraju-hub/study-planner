@@ -75,8 +75,8 @@ final class IntegrationController
                     throw new HttpException(422, 'validation', '단원 형식이 올바르지 않아요.', 'items');
                 }
                 $title = (string) Input::str($it, 'title', 1, 120, '단원 이름');
-                $start = Input::int($it, 'page_start', 1, 9999, '시작 쪽', false);
-                $end = Input::int($it, 'page_end', 1, 9999, '끝 쪽', false);
+                $start = Input::int($it, 'page_start', 1, 5000, '시작 쪽', false);
+                $end = Input::int($it, 'page_end', 1, 5000, '끝 쪽', false);
                 if ($start !== null && $end !== null && $end < $start) {
                     $end = null;
                 }

@@ -2,7 +2,7 @@
 	import { get, post, put, del } from '#lib/api.js';
 
 	// liveUnitCount: 선택한 교재의 단원 수. 단원을 추가·삭제해도 목록을 다시 불러오지 않고 바로 반영한다.
-	let { subjectId, selectedId = $bindable(null), liveUnitCount = null } = $props();
+	let { subjectId, selectedId = $bindable(null), selectedTitle = $bindable(''), liveUnitCount = null } = $props();
 
 	const KINDS = { textbook: '교과서', guide: '자습서', workbook: '문제집', academy: '학원 교재', etc: '기타' };
 	const blank = () => ({ title: '', kind: 'textbook', publisher: '', total_pages: '' });
@@ -40,6 +40,10 @@
 		showForm = false;
 		editingId = null;
 		load(id);
+	});
+
+	$effect(() => {
+		selectedTitle = items.find((t) => t.id === selectedId)?.title ?? '';
 	});
 
 	async function add(event) {

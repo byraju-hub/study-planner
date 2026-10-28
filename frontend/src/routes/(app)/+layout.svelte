@@ -57,6 +57,10 @@
 	<div class="shell">
 		<nav class="nav" aria-label="주 메뉴">
 			<div class="brand"><span class="logo">SP</span><span class="brand-name">스터디 플래너</span></div>
+			<a class="bell" href={resolve('/notifications')} aria-label={inbox.unread > 0 ? `알림 ${inbox.unread}개` : '알림'}>
+			<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7zM10 20a2 2 0 0 0 4 0" /></svg>
+			{#if inbox.unread > 0}<span class="badge">{inbox.unread > 9 ? '9+' : inbox.unread}</span>{/if}
+		</a>
 			{#each items as item (item.href)}
 				<a class="nav-item" class:active={active(item.href)} href={resolve(item.href)} aria-current={active(item.href) ? 'page' : undefined}>
 					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={item.icon} /></svg>
@@ -68,10 +72,7 @@
 				<span class="who-text"><strong>{auth.user.name}</strong><span class="muted small">{auth.user.school_name ?? '고등학생'}</span></span>
 			</div>
 		</nav>
-		<a class="bell" href={resolve('/notifications')} aria-label={inbox.unread > 0 ? `알림 ${inbox.unread}개` : '알림'}>
-			<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7zM10 20a2 2 0 0 0 4 0" /></svg>
-			{#if inbox.unread > 0}<span class="badge">{inbox.unread > 9 ? '9+' : inbox.unread}</span>{/if}
-		</a>
+
 		<main class="content">{@render children()}</main>
 	</div>
 {/if}
@@ -156,12 +157,12 @@
 		min-width: 0;
 	}
 	.bell {
-		position: fixed;
-		top: 14px;
-		right: 20px;
+		position: absolute;
+		top: 24px;
+		right: 12px;
 		z-index: 5;
-		width: 44px;
-		height: 44px;
+		width: 40px;
+		height: 40px;
 		display: grid;
 		place-items: center;
 		border-radius: 50%;
@@ -224,11 +225,14 @@
 			padding: 0;
 		}
 		.bell {
+			position: fixed;
 			top: 10px;
 			right: 12px;
+			width: 44px;
+			height: 44px;
 		}
 		.content {
-			padding: 20px 16px 88px;
+			padding: 64px 16px 88px;
 		}
 	}
 </style>

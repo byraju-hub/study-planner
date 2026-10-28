@@ -5,6 +5,7 @@
 	import { QUESTION_TYPES } from '#lib/format.js';
 	import QuizTabs from '#lib/components/QuizTabs.svelte';
 	import UnitPicker from '#lib/components/UnitPicker.svelte';
+	import AiQuestions from '#lib/components/AiQuestions.svelte';
 
 	const blank = () => ({ type: 'mcq', prompt: '', choices: ['', '', '', ''], answer: '0', explanation: '', short: '' });
 
@@ -152,6 +153,8 @@
 		</div>
 		<p class="hint">교재 본문이나 문제집 문제를 그대로 옮기기보다, 내가 이해한 내용으로 문제를 만들어 보세요. 만든 문제는 나만 볼 수 있어요.</p>
 	</form>
+
+	<AiQuestions {subjectId} {unitId} onsaved={load} />
 
 	<section class="stack">
 		<h2>내 문제 {questions.length}개</h2>
