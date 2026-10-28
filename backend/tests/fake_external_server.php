@@ -17,7 +17,7 @@ if (str_ends_with($path, '/v1/goods/itemList')) {
         return;
     }
     echo json_encode(['success' => true, 'message' => '성공', 'errorCode' => null, 'data' => ['items' => [
-        ['title' => '테스트 수학 개념서', 'author' => '홍길동', 'publisher' => '테스트출판', 'publishDate' => '2025-01-02', 'isbn13' => '9781234567890', 'cover' => 'https://img.example/c.jpg'],
+        ['title' => '테스트 수학 개념서', 'author' => '홍길동', 'publisher' => '테스트출판', 'publishDate' => '2025-01-02', 'isbn13' => '9781234567890', 'cover' => 'https://img.example/c.jpg', 'pages' => 320],
         ['author' => '제목 없는 항목'],
     ], 'currentPage' => 1, 'pageSize' => 10, 'totalCount' => 2]]);
 } elseif (str_ends_with($path, '/v1/goods/content')) {

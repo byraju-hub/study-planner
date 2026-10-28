@@ -1062,7 +1062,7 @@ check('비로그인 연동 호출 → 401', $s === 401, $r);
 [$s, $r] = $ex->call('GET', '/catalog/books?q=' . rawurlencode('수'));
 check('검색어 1글자 → 422', $s === 422, $r);
 [$s, $r] = $ex->call('GET', '/catalog/books?q=' . rawurlencode('수학 개념서'));
-check('서점 검색: 제목 없는 항목은 빼고 필요한 필드만', $s === 200 && count($r['data']) === 1 && $r['data'][0]['isbn13'] === '9781234567890' && $r['data'][0]['publisher'] === '테스트출판', $r);
+check('서점 검색: 제목 없는 항목은 빼고 필요한 필드만', $s === 200 && count($r['data']) === 1 && $r['data'][0]['isbn13'] === '9781234567890' && $r['data'][0]['publisher'] === '테스트출판' && $r['data'][0]['pages'] === 320, $r);
 [$s, $r] = $ex->call('GET', '/catalog/toc?isbn=abc');
 check('ISBN 형식 오류 → 422', $s === 422, $r);
 [$s, $r] = $ex->call('GET', '/catalog/toc?isbn=9781234567890');

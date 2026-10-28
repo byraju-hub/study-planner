@@ -25,7 +25,7 @@ final class Yes24
     /** @return list<array<string,mixed>> */
     public static function search(string $query): array
     {
-        $data = self::call('/v1/goods/itemList', ['query' => $query, 'category' => 'BOOK', 'pageSize' => 10, 'page' => 1, 'detail' => 'N']);
+        $data = self::call('/v1/goods/itemList', ['query' => $query, 'category' => 'BOOK', 'pageSize' => 10, 'page' => 1, 'detail' => 'Y']);
         return self::mapItems($data);
     }
 
@@ -50,6 +50,7 @@ final class Yes24
                 'pub_date' => (string) ($it['publishDate'] ?? ''),
                 'isbn13' => (string) ($it['isbn13'] ?? ''),
                 'cover' => (string) ($it['cover'] ?? ''),
+                'pages' => isset($it['pages']) && (int) $it['pages'] > 0 ? (int) $it['pages'] : null,
             ];
         }
         return $out;

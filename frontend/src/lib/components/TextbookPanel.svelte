@@ -15,6 +15,44 @@
 	let editingId = $state(null);
 	let edit = $state(blank());
 
+	// 서점(YES24) 검색: 고르면 이름·출판사·쪽수를 채워 준다. 학생이 고친 뒤 저장한다.
+	let bookQuery = $state('');
+	let bookResults = $state(null);
+	let bookBusy = $state(false);
+	let bookError = $state('');
+	let yes24 = $state(false);
+
+	async function toggleForm() {
+		showForm = !showForm;
+		if (showForm && !yes24) {
+			try {
+				yes24 = (await get('/integrations')).yes24 === true;
+			} catch {
+				yes24 = false;
+			}
+		}
+	}
+
+	async function searchBooks(event) {
+		event.preventDefault();
+		bookError = '';
+		bookBusy = true;
+		try {
+			bookResults = await get('/catalog/books?q=' + encodeURIComponent(bookQuery));
+		} catch (e) {
+			bookError = e.message;
+		} finally {
+			bookBusy = false;
+		}
+	}
+
+	function pickBook(b) {
+		form.title = b.title;
+		form.publisher = b.publisher || '';
+		form.total_pages = b.pages ? String(b.pages) : '';
+		bookResults = null;
+	}
+
 	const payload = (f) => ({
 		title: f.title,
 		kind: f.kind,
@@ -93,7 +131,7 @@
 <section class="card stack" aria-label="교재">
 	<div class="row-between">
 		<h2>교재</h2>
-		<button class="btn btn-small btn-soft" onclick={() => (showForm = !showForm)} aria-expanded={showForm}>
+		<button class="btn btn-small btn-soft" onclick={toggleForm} aria-expanded={showForm}>
 			{showForm ? '닫기' : '+ 교재'}
 		</button>
 	</div>
@@ -101,6 +139,33 @@
 	{#if error}<p class="alert" role="alert">{error}</p>{/if}
 
 	{#if showForm}
+		{#if yes24}
+			<div class="stack form">
+				<form class="row" onsubmit={searchBooks}>
+					<label class="sr-only" for="tb-search">서점에서 교재 찾기</label>
+					<input id="tb-search" class="input grow" placeholder="서점(YES24)에서 교재 찾기 (예: 쎈 수학)" bind:value={bookQuery} />
+					<button class="btn btn-small btn-soft" disabled={bookBusy || bookQuery.trim().length < 2}>{bookBusy ? '찾는 중…' : '찾기'}</button>
+				</form>
+				{#if bookError}<p class="alert" role="alert">{bookError}</p>{/if}
+				{#if bookResults}
+					{#if bookResults.length === 0}
+						<p class="muted small">검색 결과가 없어요. 아래에 직접 입력해 주세요.</p>
+					{:else}
+						<ul class="list">
+							{#each bookResults as b (b.isbn13 || b.title)}
+								<li class="item">
+									<button type="button" class="pick grow" onclick={() => pickBook(b)}>
+										<span class="title">{b.title}</span>
+										<span class="muted small">{[b.publisher, b.author, b.pages ? `${b.pages}쪽` : ''].filter(Boolean).join(' · ')}</span>
+									</button>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				{/if}
+				<p class="muted small">책을 고르면 아래 칸이 채워져요. 고친 뒤 "교재 추가"를 눌러 주세요. 책 정보 출처: <a href="https://www.yes24.com" target="_blank" rel="noopener">YES24</a></p>
+			</div>
+		{/if}
 		<form class="stack form" onsubmit={add}>
 			<div class="field">
 				<label for="tb-title">교재 이름</label>
