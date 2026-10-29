@@ -79,6 +79,7 @@
 				<span class="avatar" aria-hidden="true">{auth.user.name.slice(0, 1)}</span>
 				<span class="who-text"><strong>{auth.user.name}</strong><span class="muted small">{auth.user.school_name ?? '고등학생'}</span></span>
 			</div>
+			<p class="copy">ⓒ 2026 byraju with Claude. All Rights Reserved.</p>
 		</nav>
 
 		<main class="content">{@render children()}</main>
@@ -162,6 +163,12 @@
 		place-items: center;
 		font-weight: 700;
 	}
+	.copy {
+		padding: 0 8px;
+		font-size: 10px;
+		line-height: 1.4;
+		color: #a3a8b3;
+	}
 	.who-text {
 		display: flex;
 		flex-direction: column;
@@ -224,7 +231,8 @@
 			z-index: 10;
 		}
 		.brand,
-		.who {
+		.who,
+		.copy {
 			display: none;
 		}
 		.nav-item {
