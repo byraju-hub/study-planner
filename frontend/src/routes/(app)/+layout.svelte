@@ -165,7 +165,7 @@
 	}
 	.copy {
 		padding: 0;
-		font-size: 8px;
+		font-size: 9px;
 		line-height: 1.4;
 		letter-spacing: -0.3px;
 		white-space: nowrap;
