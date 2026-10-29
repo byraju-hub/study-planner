@@ -164,9 +164,11 @@
 		font-weight: 700;
 	}
 	.copy {
-		padding: 0 8px;
-		font-size: 10px;
+		padding: 0;
+		font-size: 8px;
 		line-height: 1.4;
+		letter-spacing: -0.3px;
+		white-space: nowrap;
 		color: #a3a8b3;
 	}
 	.who-text {
