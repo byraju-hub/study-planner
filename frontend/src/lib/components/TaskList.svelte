@@ -32,8 +32,7 @@
 		notice = '';
 		try {
 			await post('/tasks', {
-				title: title.replace(/s*
-s*/g, ' ').trim(),
+				title: title.replace(/\s+/g, ' ').trim(),
 				task_date: addDate,
 				subject_id: subjectId ? Number(subjectId) : null,
 				est_minutes: minutes ? Number(minutes) : null
