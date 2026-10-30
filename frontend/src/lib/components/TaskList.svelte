@@ -32,7 +32,8 @@
 		notice = '';
 		try {
 			await post('/tasks', {
-				title,
+				title: title.replace(/s*
+s*/g, ' ').trim(),
 				task_date: addDate,
 				subject_id: subjectId ? Number(subjectId) : null,
 				est_minutes: minutes ? Number(minutes) : null
@@ -43,6 +44,14 @@
 			await onchange();
 		} catch (e) {
 			error = e.message;
+		}
+	}
+
+	// Enter는 추가, Shift+Enter는 줄바꿈 대신 막는다(제목은 한 문장으로 저장).
+	function enterToAdd(event) {
+		if (event.key === 'Enter' && !event.isComposing) {
+			event.preventDefault();
+			event.currentTarget.form.requestSubmit();
 		}
 	}
 
@@ -111,7 +120,7 @@
 
 	<form class="add" onsubmit={add}>
 		<label class="sr-only" for="task-title">할 일</label>
-		<input id="task-title" class="input grow" placeholder="할 일 추가" maxlength="120" bind:value={title} required />
+		<textarea id="task-title" class="input grow ttl" rows="2" placeholder="할 일 추가 (길게 적어도 돼요)" maxlength="120" bind:value={title} onkeydown={enterToAdd} required></textarea>
 		<label class="sr-only" for="task-subject">과목</label>
 		<select id="task-subject" class="input sel" bind:value={subjectId}>
 			<option value="">과목</option>
@@ -174,6 +183,13 @@
 		display: flex;
 		gap: 8px;
 		flex-wrap: wrap;
+	}
+	.ttl {
+		flex: 1 1 100%;
+		resize: vertical;
+		min-height: 3.6em;
+		line-height: 1.45;
+		font-family: inherit;
 	}
 	.sel {
 		width: 120px;
