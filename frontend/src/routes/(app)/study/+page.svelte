@@ -1,6 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { get } from '#lib/api.js';
+	import { resolve } from '$app/paths';
 	import { fmtDate } from '#lib/format.js';
 	import ModeTabs from '#lib/components/ModeTabs.svelte';
 	import TimerCard from '#lib/components/TimerCard.svelte';
@@ -45,6 +46,7 @@
 				<p class="muted small">{data ? fmtDate(data.date) : ''}</p>
 				<h1>일반 스터디</h1>
 			</div>
+			<a class="btn btn-soft" href={resolve('/study/calendar')}>달력으로 일정 관리</a>
 		</div>
 		<ModeTabs current="study" />
 	</header>
@@ -55,7 +57,7 @@
 		<div class="cols">
 			<div class="stack col">
 				<TimerCard session={data.session} serverNow={data.server_now} minutesToday={data.minutes_today} {subjects} onchange={reload} />
-				<TaskList tasks={data.tasks} date={data.date} {subjects} onchange={reload} />
+				<TaskList tasks={data.tasks} date={data.date} today={data.date} {subjects} onchange={reload} />
 				<LessonList lessons={data.lessons} date={data.date} onchange={reload} />
 			</div>
 			<div class="stack col">

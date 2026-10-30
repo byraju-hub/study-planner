@@ -58,3 +58,16 @@ export const QUESTION_TYPES = { mcq: '객관식', ox: 'OX', short: '단답형', 
 export function fmtPct(ratio) {
 	return ratio === null || ratio === undefined ? '—' : `${Math.round(ratio * 100)}%`;
 }
+
+/** "2026-10-30" + n일 (시간대와 무관하게 날짜 문자열만 쓴다) */
+export function addDays(ymd, n) {
+	const [y, m, d] = ymd.split('-').map(Number);
+	return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+/** 이 기기 시계 기준 오늘 "YYYY-MM-DD" */
+export function localToday() {
+	const n = new Date();
+	const p = (v) => String(v).padStart(2, '0');
+	return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}`;
+}

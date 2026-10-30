@@ -1,26 +1,43 @@
 <script>
 	import { post, put, del } from '#lib/api.js';
+	import { addDays, fmtDate, fmtMD } from '#lib/format.js';
 	import SubjectChip from './SubjectChip.svelte';
 
-	let { tasks, date, subjects, onchange = () => {} } = $props();
+	// date: 이 목록이 보여 주는 날. today: 서버 기준 오늘(빠른 날짜 버튼의 기준). 달력에서는 date가 고른 날이다.
+	let { tasks, date, today = date, subjects, onchange = () => {} } = $props();
 
 	let title = $state('');
 	let subjectId = $state('');
 	let minutes = $state('');
 	let error = $state('');
+	let notice = $state('');
+	let addDate = $state('');
+	$effect(() => {
+		addDate = date;
+	});
+
+	const isToday = $derived(date === today);
+	const heading = $derived(isToday ? '오늘 할 일' : `${fmtDate(date)} 할 일`);
+	const quick = $derived([
+		{ label: '오늘', ymd: today },
+		{ label: '내일', ymd: addDays(today, 1) },
+		{ label: '모레', ymd: addDays(today, 2) }
+	]);
 
 	const doneCount = $derived(tasks.filter((t) => t.done).length);
 
 	async function add(event) {
 		event.preventDefault();
 		error = '';
+		notice = '';
 		try {
 			await post('/tasks', {
 				title,
-				task_date: date,
+				task_date: addDate,
 				subject_id: subjectId ? Number(subjectId) : null,
 				est_minutes: minutes ? Number(minutes) : null
 			});
+			if (addDate !== date) notice = `${fmtMD(addDate)}에 추가했어요.`;
 			title = '';
 			minutes = '';
 			await onchange();
@@ -63,15 +80,15 @@
 	}
 </script>
 
-<section class="card stack" aria-label="오늘 할 일">
+<section class="card stack" aria-label={heading}>
 	<div class="row-between">
-		<h2>오늘 할 일 <span class="count">{doneCount}/{tasks.length}</span></h2>
+		<h2>{heading} <span class="count">{doneCount}/{tasks.length}</span></h2>
 	</div>
 
 	{#if error}<p class="alert" role="alert">{error}</p>{/if}
 
 	{#if tasks.length === 0}
-		<p class="empty">오늘 할 일이 없어요. 아래에서 추가해 보세요.</p>
+		<p class="empty">{isToday ? '오늘' : '이 날'} 할 일이 없어요. 아래에서 추가해 보세요.</p>
 	{:else}
 		<ul class="list">
 			{#each tasks as t (t.id)}
@@ -90,6 +107,8 @@
 		</ul>
 	{/if}
 
+	{#if notice}<p class="notice" role="status">{notice}</p>{/if}
+
 	<form class="add" onsubmit={add}>
 		<label class="sr-only" for="task-title">할 일</label>
 		<input id="task-title" class="input grow" placeholder="할 일 추가" maxlength="120" bind:value={title} required />
@@ -100,6 +119,13 @@
 		</select>
 		<label class="sr-only" for="task-min">예상 시간(분)</label>
 		<input id="task-min" class="input min" type="number" min="1" max="600" placeholder="분" bind:value={minutes} />
+		<div class="when">
+			<label class="sr-only" for="task-date">날짜</label>
+			<input id="task-date" class="input date" type="date" bind:value={addDate} required />
+			{#each quick as q (q.label)}
+				<button type="button" class="btn btn-small" class:btn-soft={addDate === q.ymd} onclick={() => (addDate = q.ymd)}>{q.label}</button>
+			{/each}
+		</div>
 		<button class="btn btn-primary">추가</button>
 	</form>
 </section>
@@ -151,6 +177,19 @@
 	}
 	.sel {
 		width: 120px;
+	}
+	.when {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+	.date {
+		width: 150px;
+	}
+	.notice {
+		color: var(--accent-dark);
+		font-size: 13px;
 	}
 	.min {
 		width: 76px;
